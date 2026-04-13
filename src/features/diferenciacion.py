@@ -45,6 +45,13 @@ GENERIC_VALUE_PROPS = [
 class DiferenciacionExtractor:
     """Extract diferenciación features."""
 
+    @staticmethod
+    def _sentence_count(content: str) -> int:
+        """Count substantial sentence-like chunks for normalization."""
+        chunks = re.split(r"[.!?\n]+", content)
+        substantial = [chunk for chunk in chunks if len(chunk.split()) >= 3]
+        return max(len(substantial), 1)
+
     def extract(self, web: WebData = None, exa: ExaData = None,
                 competitor_webs: list[WebData] = None,
                 competitor_data: CompetitorData = None,
@@ -132,22 +139,23 @@ class DiferenciacionExtractor:
             return FeatureValue("generic_language_score", 50.0, confidence=0.3, source="none")
 
         content = web.markdown_content.lower()
+        sentence_count = self._sentence_count(content)
 
         # Count generic phrases
-        generic_hits = sum(1 for p in GENERIC_PHRASES if p in content)
-        generic_prop_hits = sum(1 for p in GENERIC_VALUE_PROPS if p in content)
+        generic_hits = sum(content.count(p) for p in GENERIC_PHRASES)
+        generic_prop_hits = sum(content.count(p) for p in GENERIC_VALUE_PROPS)
 
         total_generic = generic_hits + generic_prop_hits
+        generic_ratio = total_generic / sentence_count
 
-        # Calculate generic ratio
-        # More hits = more generic
-        if total_generic >= 10:
+        # Ratio of generic statements to meaningful sentences.
+        if generic_ratio >= 0.35:
             score = 90.0  # Very generic
-        elif total_generic >= 6:
+        elif generic_ratio >= 0.20:
             score = 70.0
-        elif total_generic >= 3:
+        elif generic_ratio >= 0.10:
             score = 50.0
-        elif total_generic >= 1:
+        elif generic_ratio >= 0.03:
             score = 30.0
         else:
             score = 15.0  # Very specific/original
@@ -155,7 +163,10 @@ class DiferenciacionExtractor:
         return FeatureValue(
             "generic_language_score",
             score,
-            raw_value=f"{total_generic} generic phrases found",
+            raw_value=(
+                f"generic_occurrences={total_generic}, "
+                f"sentences={sentence_count}, ratio={generic_ratio:.2f}"
+            ),
             confidence=0.7,
             source="web_scrape",
         )

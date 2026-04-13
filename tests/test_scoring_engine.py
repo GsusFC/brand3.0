@@ -69,6 +69,28 @@ class ScoringEngineTests(unittest.TestCase):
         self.assertEqual(score.score, 5.0)
         self.assertIn("marca_fantasma", score.rules_applied)
 
+    def test_coherencia_one_active_channel_caps_score(self):
+        score = self.engine.score_dimension(
+            "coherencia",
+            {
+                "visual_consistency": FeatureValue("visual_consistency", 90.0),
+                "messaging_consistency": FeatureValue("messaging_consistency", 85.0),
+                "tone_consistency": FeatureValue("tone_consistency", 80.0),
+                "cross_channel_coherence": FeatureValue("cross_channel_coherence", 75.0),
+            },
+            all_features={
+                "coherencia": {},
+                "presencia": {
+                    "web_presence": FeatureValue("web_presence", 80.0),
+                    "social_footprint": FeatureValue("social_footprint", 10.0),
+                    "search_visibility": FeatureValue("search_visibility", 15.0),
+                },
+            },
+        )
+
+        self.assertEqual(score.score, 50.0)
+        self.assertIn("solo_un_canal_activo", score.rules_applied)
+
     def test_percepcion_low_mentions_becomes_neutral(self):
         score = self.engine.score_dimension(
             "percepcion",

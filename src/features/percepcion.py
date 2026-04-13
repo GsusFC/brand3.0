@@ -8,7 +8,7 @@ Sentiment analysis is heuristic-based (keyword approach).
 TODO: LLM-based sentiment for higher accuracy.
 """
 
-import re
+from datetime import datetime
 from ..models.brand import FeatureValue
 from ..collectors.web_collector import WebData
 from ..collectors.exa_collector import ExaData
@@ -43,6 +43,28 @@ CONTROVERSY_WORDS = {
 
 class PercepcionExtractor:
     """Extract percepción features from mentions and coverage."""
+
+    @staticmethod
+    def _parse_published_date(value: str) -> datetime | None:
+        """Parse common Exa date formats into datetimes."""
+        if not value or value == "None":
+            return None
+
+        candidate = value.strip()
+        if candidate.endswith("Z"):
+            candidate = candidate[:-1] + "+00:00"
+
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            pass
+
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%B %d, %Y"):
+            try:
+                return datetime.strptime(value[:19], fmt)
+            except ValueError:
+                continue
+        return None
 
     def extract(self, web: WebData = None, exa: ExaData = None) -> dict[str, FeatureValue]:
         features = {}
@@ -114,11 +136,23 @@ class PercepcionExtractor:
         if not exa or not exa.mentions:
             return FeatureValue("sentiment_trend", 50.0, confidence=0.3, source="none")
 
-        # Split mentions into older vs newer (by position — Exa returns sorted by relevance)
-        # Not perfect without date ordering, but a proxy
-        results = exa.mentions + exa.news
-        if len(results) < 4:
-            return FeatureValue("sentiment_trend", 50.0, confidence=0.3, source="exa")
+        dated_results = []
+        for result in exa.mentions + exa.news:
+            parsed_date = self._parse_published_date(result.published_date)
+            if parsed_date is not None:
+                dated_results.append((parsed_date, result))
+
+        if len(dated_results) < 4:
+            return FeatureValue(
+                "sentiment_trend",
+                50.0,
+                raw_value="insufficient dated mentions",
+                confidence=0.1,
+                source="exa",
+            )
+
+        dated_results.sort(key=lambda item: item[0])
+        results = [result for _, result in dated_results]
 
         mid = len(results) // 2
         older_text = " ".join(((r.text or "") + " " + (r.summary or "")).lower() for r in results[:mid])
@@ -141,8 +175,8 @@ class PercepcionExtractor:
         return FeatureValue(
             "sentiment_trend",
             score,
-            raw_value=f"older={older_ratio:.2f}, newer={newer_ratio:.2f}, delta={delta:.2f}",
-            confidence=0.4,
+            raw_value=f"dated_results={len(results)}, older={older_ratio:.2f}, newer={newer_ratio:.2f}, delta={delta:.2f}",
+            confidence=0.6,
             source="exa",
         )
 

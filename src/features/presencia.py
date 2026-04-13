@@ -17,6 +17,38 @@ from ..collectors.social_collector import SocialData
 class PresenciaExtractor:
     """Extract presencia features from raw collected data."""
 
+    @staticmethod
+    def _subject_relevance(result, brand_name: str) -> float:
+        """Estimate whether the brand is central in the result, not just mentioned in passing."""
+        brand_lower = (brand_name or "").strip().lower()
+        if not brand_lower:
+            return 0.5
+
+        title = (result.title or "").lower()
+        url = (result.url or "").lower()
+        text = ((result.text or "") + " " + (result.summary or "")).lower()
+
+        if brand_lower in title or brand_lower in url:
+            return 1.0
+        if brand_lower in text:
+            return 0.7
+        return 0.35
+
+    @staticmethod
+    def _normalize_relevance(score: float) -> float:
+        """Normalize Exa score to a useful 0-1 range."""
+        if score is None:
+            return 0.4
+        try:
+            numeric = float(score)
+        except (TypeError, ValueError):
+            return 0.4
+        if numeric <= 0:
+            return 0.2
+        if numeric >= 1:
+            return 1.0
+        return numeric
+
     def extract(
         self,
         web: WebData = None,
@@ -278,14 +310,23 @@ class PresenciaExtractor:
         if not exa or not exa.ai_visibility_results:
             return FeatureValue("ai_visibility", 20.0, confidence=0.4, source="exa")
 
-        num = len(exa.ai_visibility_results)
-        score = min(num * 25, 100.0)
+        weighted_sum = 0.0
+        strong_results = 0
+        for result in exa.ai_visibility_results[:5]:
+            relevance = self._normalize_relevance(getattr(result, "score", 0.0))
+            subject_relevance = self._subject_relevance(result, exa.brand_name)
+            contribution = 25 * relevance * subject_relevance
+            weighted_sum += contribution
+            if contribution >= 12:
+                strong_results += 1
+
+        score = min(weighted_sum, 100.0)
 
         return FeatureValue(
             "ai_visibility",
             score,
-            raw_value=f"{num} AI-related mentions",
-            confidence=0.5,
+            raw_value=f"weighted={weighted_sum:.1f}, strong_results={strong_results}, total_results={len(exa.ai_visibility_results)}",
+            confidence=0.6,
             source="exa",
         )
 

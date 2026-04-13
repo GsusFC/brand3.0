@@ -61,6 +61,7 @@ class ScoringEngine:
         inactive_6m = self._rule_override("vitalidad", "inactiva_6m")
         inactive_12m = self._rule_override("vitalidad", "inactiva_12m")
         no_web = self._rule_override("coherencia", "sin_web_propia")
+        one_channel = self._rule_override("coherencia", "solo_un_canal_activo")
         return {
             "coherencia": [
                 ScoringRule(
@@ -70,6 +71,23 @@ class ScoringEngine:
                     ),
                     cap=float(no_web.get("cap", 40)),
                     insight="Sin web propia, la coherencia de marca está limitada",
+                ),
+                ScoringRule(
+                    condition="solo_un_canal_activo",
+                    check=lambda f,
+                    web_threshold=float(one_channel.get("web_threshold", 20)),
+                    social_threshold=float(one_channel.get("social_threshold", 20)),
+                    search_threshold=float(one_channel.get("search_threshold", 25)): (
+                        sum(
+                            [
+                                f.get("web_presence", FeatureValue("", 0)).value >= web_threshold,
+                                f.get("social_footprint", FeatureValue("", 0)).value >= social_threshold,
+                                f.get("search_visibility", FeatureValue("", 0)).value >= search_threshold,
+                            ]
+                        ) <= 1
+                    ),
+                    cap=float(one_channel.get("cap", 50)),
+                    insight="Solo hay un canal activo detectable — la coherencia cross-channel está limitada",
                 ),
             ],
             "presencia": [
