@@ -1,0 +1,25 @@
+{
+  "name": "canonical-benchmark-v1",
+  "benchmark_type": "canonical",
+  "profiles": [
+    "frontier_ai",
+    "enterprise_ai",
+    "physical_ai",
+    "base"
+  ],
+  "brands": [
+    {
+      "brand_name": "Example Company",
+      "url": "https://example.com/",
+      "expected_niche": "frontier_ai",
+      "expected_subtype": "model_lab",
+      "notes": "Short human description of the company.",
+      "inclusion_reason": "Why this company belongs in the canonical set.",
+      "review_status": "draft",
+      "signal_quality": "high",
+      "known_risks": [],
+      "reviewer": null,
+      "last_verified_at": null
+    }
+  ]
+}

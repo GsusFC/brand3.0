@@ -1,0 +1,1511 @@
+"""Reusable service layer for Brand3 Scoring operations."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from pathlib import Path
+from statistics import mean
+from urllib.parse import urlparse
+
+from src.collectors.competitor_collector import (
+    ComparisonResult,
+    CompetitorCollector,
+    CompetitorData,
+    CompetitorInfo,
+)
+from src.collectors.exa_collector import ExaCollector, ExaData, ExaResult
+from src.collectors.social_collector import PlatformMetrics, SocialCollector, SocialData
+from src.collectors.web_collector import WebCollector, WebData
+from src.config import (
+    BRAND3_CACHE_TTL_HOURS,
+    BRAND3_DB_PATH,
+    BRAND3_NICHE_AUTO_APPLY_MIN_CONFIDENCE,
+    BRAND3_PROMOTION_MAX_COMPOSITE_DROP,
+    BRAND3_PROMOTION_MAX_DIMENSION_DROPS,
+    EXA_API_KEY,
+    FIRECRAWL_API_KEY,
+)
+from src.niche import (
+    classify_brand_niche,
+    get_calibration_profile,
+    list_calibration_profiles,
+    select_calibration_profile,
+)
+from src.features.llm_analyzer import LLMAnalyzer
+from src.features.percepcion_llm import PercepcionLLMExtractor
+from src.features.coherencia_llm import CoherenciaLLMExtractor
+from src.features.diferenciacion_llm import DiferenciacionLLMExtractor
+from src.features.presencia import PresenciaExtractor
+from src.features.vitalidad import VitalidadExtractor
+from src.learning.applier import CandidateApplyError, apply_candidate
+from src.learning.calibration import CalibrationAnalyzer
+from src.scoring.engine import ScoringEngine
+from src.storage.sqlite_store import SQLiteStore
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DIMENSIONS_PATH = (PROJECT_ROOT / "src" / "dimensions.py").resolve()
+ENGINE_PATH = (PROJECT_ROOT / "src" / "scoring" / "engine.py").resolve()
+
+
+class AnalysisJobCancelled(Exception):
+    """Raised when a background analysis job is cancelled."""
+
+
+def _slugify(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
+    return "-".join(part for part in cleaned.split("-") if part) or "brand"
+
+
+def _derive_brand_profile(brand_name: str | None, url: str | None) -> dict[str, object]:
+    parsed = urlparse(url if url and "://" in url else f"https://{url}" if url else "")
+    domain = (parsed.netloc or parsed.path or "").strip().lower() or None
+    if domain and domain.startswith("www."):
+        domain = domain[4:]
+    logo_key = _slugify(brand_name) if brand_name else None
+    if not logo_key and domain:
+        logo_key = _slugify(domain.split(".")[0])
+    return {
+        "name": brand_name,
+        "domain": domain,
+        "logo_key": logo_key,
+        "logo_url": None,
+    }
+
+
+def _build_brand_profile(
+    brand_name: str | None,
+    url: str | None,
+    store: SQLiteStore | None = None,
+) -> dict[str, object]:
+    should_close = False
+    if store is None:
+        try:
+            store = SQLiteStore(BRAND3_DB_PATH)
+            should_close = True
+        except Exception:
+            return _derive_brand_profile(brand_name, url)
+    try:
+        return store.get_brand_profile(brand_name, url)
+    except Exception:
+        return _derive_brand_profile(brand_name, url)
+    finally:
+        if should_close:
+            store.close()
+
+
+def _to_jsonable(value):
+    if value is None:
+        return None
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    return value
+
+
+def _save_result(result: dict) -> Path:
+    output_dir = PROJECT_ROOT / "output"
+    output_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = f"{_slugify(result['brand'])}-{timestamp}.json"
+    output_path = output_dir / filename
+    output_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return output_path
+
+
+def _save_benchmark_result(result: dict) -> Path:
+    output_dir = PROJECT_ROOT / "output" / "benchmarks"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    spec_name = _slugify(result.get("benchmark_name", "benchmark"))
+    output_path = output_dir / f"{spec_name}-{timestamp}.json"
+    output_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return output_path
+
+
+def _from_web_payload(payload: dict | None) -> WebData | None:
+    if not payload:
+        return None
+    return WebData(**payload)
+
+
+def _from_exa_payload(payload: dict | None) -> ExaData | None:
+    if not payload:
+        return None
+    return ExaData(
+        brand_name=payload.get("brand_name", ""),
+        mentions=[ExaResult(**item) for item in payload.get("mentions", [])],
+        competitors=[ExaResult(**item) for item in payload.get("competitors", [])],
+        ai_visibility_results=[ExaResult(**item) for item in payload.get("ai_visibility_results", [])],
+        news=[ExaResult(**item) for item in payload.get("news", [])],
+        raw_responses=payload.get("raw_responses", {}),
+    )
+
+
+def _from_social_payload(payload: dict | None) -> SocialData | None:
+    if not payload:
+        return None
+    return SocialData(
+        brand_name=payload.get("brand_name", ""),
+        platforms={
+            name: PlatformMetrics(**metrics)
+            for name, metrics in payload.get("platforms", {}).items()
+        },
+        profiles_found=payload.get("profiles_found", []),
+        total_followers=payload.get("total_followers", 0),
+        avg_post_frequency=payload.get("avg_post_frequency", 0.0),
+        most_active_platform=payload.get("most_active_platform", ""),
+        error=payload.get("error", ""),
+    )
+
+
+def _from_competitor_payload(payload: dict | None) -> CompetitorData | None:
+    if not payload:
+        return None
+    return CompetitorData(
+        brand_name=payload.get("brand_name", ""),
+        brand_url=payload.get("brand_url", ""),
+        competitors=[
+            CompetitorInfo(
+                name=item.get("name", ""),
+                url=item.get("url", ""),
+                exa_result=ExaResult(**item["exa_result"]) if item.get("exa_result") else None,
+                web_data=WebData(**item["web_data"]) if item.get("web_data") else None,
+                error=item.get("error", ""),
+            )
+            for item in payload.get("competitors", [])
+        ],
+        comparisons=[ComparisonResult(**item) for item in payload.get("comparisons", [])],
+        brand_web=WebData(**payload["brand_web"]) if payload.get("brand_web") else None,
+        errors=payload.get("errors", []),
+    )
+
+
+def _load_cached(store, brand_name: str, url: str, source: str, ttl_hours: int, decoder):
+    if not store:
+        return None
+    try:
+        payload = store.get_latest_raw_input(
+            brand_name=brand_name,
+            url=url,
+            source=source,
+            max_age_hours=ttl_hours,
+        )
+    except Exception as e:
+        print(f"  Cache {source}: skipped ({e})")
+        return None
+    if not payload:
+        return None
+    try:
+        return decoder(payload)
+    except Exception as e:
+        print(f"  Cache {source}: invalid payload ({e})")
+        return None
+
+
+def _store_safely(store, action: str, fn) -> None:
+    if not store:
+        return
+    try:
+        fn()
+    except Exception as e:
+        print(f"  Storage {action}: skipped ({e})")
+
+
+def _emit_progress(progress_cb, phase: str) -> None:
+    if progress_cb is None:
+        return
+    progress_cb(phase)
+
+
+def _check_cancel(cancel_check) -> None:
+    if cancel_check is not None and cancel_check():
+        raise AnalysisJobCancelled("Cancelled by user")
+
+
+def _score_map(snapshot: dict) -> dict[str, float]:
+    return {
+        item["dimension_name"]: float(item["score"])
+        for item in snapshot.get("scores", [])
+        if item.get("dimension_name") is not None and item.get("score") is not None
+    }
+
+
+def _build_experiment_summary(
+    before_snapshot: dict,
+    after_snapshot: dict,
+    applied_results: list[dict],
+) -> dict:
+    before_run = before_snapshot["run"]
+    after_run = after_snapshot["run"]
+    before_scores = _score_map(before_snapshot)
+    after_scores = _score_map(after_snapshot)
+
+    dimensions = {}
+    for dimension_name in sorted(set(before_scores) | set(after_scores)):
+        before_value = before_scores.get(dimension_name)
+        after_value = after_scores.get(dimension_name)
+        dimensions[dimension_name] = {
+            "before": before_value,
+            "after": after_value,
+            "delta": None if before_value is None or after_value is None else round(after_value - before_value, 1),
+        }
+
+    before_composite = before_run.get("composite_score")
+    after_composite = after_run.get("composite_score")
+    applied_candidate_ids = [item["candidate_id"] for item in applied_results if item.get("applied")]
+
+    return {
+        "brand_name": after_run["brand_name"],
+        "url": after_run["url"],
+        "before_run_id": before_run["id"],
+        "after_run_id": after_run["id"],
+        "candidate_ids": applied_candidate_ids,
+        "composite": {
+            "before": before_composite,
+            "after": after_composite,
+            "delta": None if before_composite is None or after_composite is None else round(after_composite - before_composite, 1),
+        },
+        "dimensions": dimensions,
+    }
+
+
+def _default_gate_config() -> dict:
+    return {
+        "max_composite_drop": BRAND3_PROMOTION_MAX_COMPOSITE_DROP,
+        "max_dimension_drops": dict(BRAND3_PROMOTION_MAX_DIMENSION_DROPS),
+    }
+
+
+def _load_gate_config(store: SQLiteStore | None = None) -> dict:
+    should_close = False
+    if store is None:
+        store = SQLiteStore(BRAND3_DB_PATH)
+        should_close = True
+    try:
+        return store.get_gate_config() or _default_gate_config()
+    finally:
+        if should_close:
+            store.close()
+
+
+def _read_calibration_state(store: SQLiteStore | None = None) -> dict[str, object]:
+        return {
+            "dimensions_content": DIMENSIONS_PATH.read_text(encoding="utf-8"),
+            "engine_content": ENGINE_PATH.read_text(encoding="utf-8"),
+            "gate_config": _load_gate_config(store),
+        }
+
+
+def _restore_calibration_state(version: dict, store: SQLiteStore | None = None) -> None:
+    DIMENSIONS_PATH.write_text(version["dimensions_content"], encoding="utf-8")
+    ENGINE_PATH.write_text(version["engine_content"], encoding="utf-8")
+    if version.get("gate_config") is not None:
+        should_close = False
+        if store is None:
+            store = SQLiteStore(BRAND3_DB_PATH)
+            should_close = True
+        try:
+            store.upsert_gate_config(version["gate_config"])
+        finally:
+            if should_close:
+                store.close()
+
+
+def _evaluate_promotion_gate(experiment: dict | None, gate_config: dict | None = None) -> dict:
+    gate_config = gate_config or _default_gate_config()
+    max_composite_drop = float(gate_config.get("max_composite_drop", BRAND3_PROMOTION_MAX_COMPOSITE_DROP))
+    max_dimension_drops = dict(BRAND3_PROMOTION_MAX_DIMENSION_DROPS)
+    max_dimension_drops.update(gate_config.get("max_dimension_drops", {}))
+    if not experiment:
+        return {
+            "allowed": False,
+            "reasons": ["No experiment found for this version"],
+            "summary": None,
+            "thresholds": {
+                "max_composite_drop": max_composite_drop,
+                "max_dimension_drops": max_dimension_drops,
+            },
+        }
+
+    summary = experiment.get("summary", {})
+    composite = summary.get("composite", {})
+    reasons = []
+
+    composite_delta = composite.get("delta")
+    if composite_delta is None:
+        reasons.append("Experiment is missing composite delta")
+    elif composite_delta < -max_composite_drop:
+        reasons.append(
+            f"Composite regressed by {composite_delta:.1f} points "
+            f"(limit {-max_composite_drop:.1f})"
+        )
+
+    for dimension_name, payload in summary.get("dimensions", {}).items():
+        delta = payload.get("delta")
+        max_drop = float(max_dimension_drops.get(dimension_name, 5.0))
+        if delta is not None and delta < -max_drop:
+            reasons.append(
+                f"Dimension {dimension_name} regressed by {delta:.1f} points "
+                f"(limit {-max_drop:.1f})"
+            )
+
+    return {
+        "allowed": len(reasons) == 0,
+        "reasons": reasons,
+        "summary": summary,
+        "experiment_id": experiment.get("id"),
+        "thresholds": {
+            "max_composite_drop": max_composite_drop,
+            "max_dimension_drops": max_dimension_drops,
+        },
+    }
+
+
+def _compare_summaries(target_summary: dict | None, baseline_summary: dict | None) -> dict | None:
+    if not target_summary or not baseline_summary:
+        return None
+
+    target_composite = target_summary.get("composite", {}).get("after")
+    baseline_composite = baseline_summary.get("composite", {}).get("after")
+    dimensions = {}
+
+    target_dimensions = target_summary.get("dimensions", {})
+    baseline_dimensions = baseline_summary.get("dimensions", {})
+    for dimension_name in sorted(set(target_dimensions) | set(baseline_dimensions)):
+        target_after = target_dimensions.get(dimension_name, {}).get("after")
+        baseline_after = baseline_dimensions.get(dimension_name, {}).get("after")
+        dimensions[dimension_name] = {
+            "target_after": target_after,
+            "baseline_after": baseline_after,
+            "delta_vs_baseline": None
+            if target_after is None or baseline_after is None
+            else round(target_after - baseline_after, 1),
+        }
+
+    return {
+        "composite": {
+            "target_after": target_composite,
+            "baseline_after": baseline_composite,
+            "delta_vs_baseline": None
+            if target_composite is None or baseline_composite is None
+            else round(target_composite - baseline_composite, 1),
+        },
+        "dimensions": dimensions,
+    }
+
+
+def _compute_scoring_state_fingerprint(
+    dimensions_content: str,
+    engine_content: str,
+    gate_config: dict,
+    calibration_profile: str,
+    calibration_profile_config: dict,
+) -> str:
+    payload = {
+        "dimensions_content": dimensions_content,
+        "engine_content": engine_content,
+        "gate_config": gate_config,
+        "calibration_profile": calibration_profile,
+        "calibration_profile_config": calibration_profile_config,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    return digest[:16]
+
+
+def _build_run_audit_context(
+    store: SQLiteStore | None = None,
+    calibration_profile: str = "base",
+    niche_classification: dict | None = None,
+) -> dict:
+    should_close = False
+    if store is None:
+        store = SQLiteStore(BRAND3_DB_PATH)
+        should_close = True
+    try:
+        gate_config = _load_gate_config(store)
+        dimensions_content = DIMENSIONS_PATH.read_text(encoding="utf-8")
+        engine_content = ENGINE_PATH.read_text(encoding="utf-8")
+        calibration_profile_config = get_calibration_profile(calibration_profile)
+        return {
+            "gate_config": gate_config,
+            "active_baseline": store.get_active_baseline(),
+            "calibration_profile": calibration_profile,
+            "calibration_profile_config": calibration_profile_config,
+            "niche_classification": niche_classification,
+            "scoring_state_fingerprint": _compute_scoring_state_fingerprint(
+                dimensions_content=dimensions_content,
+                engine_content=engine_content,
+                gate_config=gate_config,
+                calibration_profile=calibration_profile,
+                calibration_profile_config=calibration_profile_config,
+            ),
+        }
+    finally:
+        if should_close:
+            store.close()
+
+
+def run(
+    url: str,
+    brand_name: str = None,
+    use_llm: bool = True,
+    use_social: bool = True,
+    calibration_profile_override: str | None = None,
+    progress_cb=None,
+    cancel_check=None,
+) -> dict:
+    if not brand_name:
+        brand_name = url.replace("https://", "").replace("http://", "").split("/")[0]
+
+    store = None
+    run_id = None
+    try:
+        store = SQLiteStore(BRAND3_DB_PATH)
+        brand_id = store.upsert_brand(brand_name, url)
+        run_id = store.create_run(brand_id, brand_name, url, use_llm, use_social)
+    except Exception as e:
+        print(f"  Storage: disabled ({e})")
+
+    try:
+        _check_cancel(cancel_check)
+        print(f"[1/4] Collecting data for {brand_name}...")
+
+        web_collector = WebCollector(api_key=FIRECRAWL_API_KEY)
+        web_data = _load_cached(store, brand_name, url, "web", BRAND3_CACHE_TTL_HOURS, _from_web_payload)
+        if web_data:
+            print(f"  Web: cache hit ({len(web_data.markdown_content)} chars)")
+        else:
+            web_data = web_collector.scrape(url)
+            print(f"  Web: {len(web_data.markdown_content)} chars scraped")
+            if run_id:
+                _store_safely(store, "web save", lambda: store.save_raw_input(run_id, "web", web_data))
+
+        exa_collector = ExaCollector(api_key=EXA_API_KEY)
+        exa_data = _load_cached(store, brand_name, url, "exa", BRAND3_CACHE_TTL_HOURS, _from_exa_payload)
+        if exa_data:
+            print(f"  Exa: cache hit ({len(exa_data.mentions)} mentions, {len(exa_data.news)} news)")
+        else:
+            exa_data = exa_collector.collect_brand_data(brand_name, url)
+            print(f"  Exa: {len(exa_data.mentions)} mentions, {len(exa_data.news)} news")
+            if run_id:
+                _store_safely(store, "exa save", lambda: store.save_raw_input(run_id, "exa", exa_data))
+
+        social_data = None
+        if use_social:
+            social_data = _load_cached(store, brand_name, url, "social", BRAND3_CACHE_TTL_HOURS, _from_social_payload)
+            if social_data:
+                print(f"  Social: cache hit ({len(social_data.platforms)} platforms, {social_data.total_followers:,} total followers)")
+            else:
+                try:
+                    social_collector = SocialCollector(api_key=FIRECRAWL_API_KEY)
+                    social_data = social_collector.collect(brand_name, web_data.markdown_content)
+                    platforms_count = len(social_data.platforms)
+                    print(f"  Social: {platforms_count} platforms, {social_data.total_followers:,} total followers")
+                    if run_id:
+                        _store_safely(store, "social save", lambda: store.save_raw_input(run_id, "social", social_data))
+                except Exception as e:
+                    print(f"  Social: error - {e}")
+                    social_data = None
+
+        competitor_collector = CompetitorCollector(
+            exa_collector=exa_collector,
+            web_collector=web_collector,
+            max_competitors=5,
+        )
+        competitor_data = _load_cached(
+            store, brand_name, url, "competitors", BRAND3_CACHE_TTL_HOURS, _from_competitor_payload
+        )
+        if competitor_data:
+            print(f"  Competitors: cache hit ({len(competitor_data.competitors)} competitors)")
+        else:
+            competitor_data = competitor_collector.collect(
+                brand_name=brand_name,
+                brand_url=url,
+                brand_web=web_data,
+                exa_data=exa_data,
+            )
+            if run_id:
+                _store_safely(
+                    store,
+                    "competitor save",
+                    lambda: store.save_raw_input(run_id, "competitors", competitor_data),
+                )
+
+        exa_texts = []
+        if exa_data:
+            exa_texts.extend([item.title for item in exa_data.mentions if item.title])
+            exa_texts.extend([item.text for item in exa_data.mentions if item.text])
+            exa_texts.extend([item.summary for item in exa_data.mentions if item.summary])
+            exa_texts.extend([item.title for item in exa_data.news if item.title])
+        competitor_names = []
+        if competitor_data:
+            competitor_names = [item.name for item in competitor_data.competitors if item.name]
+        niche_classification = classify_brand_niche(
+            brand_name,
+            url,
+            web_title=web_data.title if web_data else None,
+            web_content=web_data.markdown_content if web_data else None,
+            exa_texts=exa_texts,
+            competitor_names=competitor_names,
+        )
+        if calibration_profile_override:
+            calibration_profile = calibration_profile_override
+            profile_source = "manual"
+        else:
+            calibration_profile, profile_source = select_calibration_profile(
+                niche_classification,
+                min_confidence=BRAND3_NICHE_AUTO_APPLY_MIN_CONFIDENCE,
+            )
+        print(
+            "  Niche:"
+            f" {niche_classification['predicted_niche']}"
+            f"/{niche_classification.get('predicted_subtype') or '-'}"
+            f" ({niche_classification['confidence']:.2f})"
+            f" -> profile {calibration_profile} [{profile_source}]"
+        )
+        if run_id:
+            _store_safely(
+                store,
+                "run classification",
+                lambda: store.update_run_classification(
+                    run_id,
+                    niche_classification,
+                    calibration_profile,
+                    profile_source,
+                ),
+            )
+
+        llm = None
+        if use_llm:
+            llm = LLMAnalyzer()
+            if llm.api_key:
+                print(f"  LLM: {llm.model} via Nous")
+            else:
+                print("  LLM: disabled (no key found)")
+                llm = None
+
+        _emit_progress(progress_cb, "extracting")
+        _check_cancel(cancel_check)
+        print("[2/4] Extracting features...")
+
+        screenshot_url = None
+        try:
+            from src.features.visual_analyzer import VisualAnalyzer
+            visual = VisualAnalyzer()
+            screenshot_url = visual.take_screenshot(url).get("screenshot_url")
+            if screenshot_url:
+                print("  Screenshot: captured")
+        except Exception as e:
+            print(f"  Screenshot: skipped ({e})")
+
+        features_by_dim = {}
+        presencia_ext = PresenciaExtractor()
+        features_by_dim["presencia"] = presencia_ext.extract(web=web_data, exa=exa_data, social=social_data)
+
+        vitalidad_ext = VitalidadExtractor()
+        features_by_dim["vitalidad"] = vitalidad_ext.extract(web=web_data, exa=exa_data)
+
+        if llm:
+            coherencia_ext = CoherenciaLLMExtractor(llm=llm)
+            diferenciacion_ext = DiferenciacionLLMExtractor(llm=llm)
+            percepcion_ext = PercepcionLLMExtractor(llm=llm)
+        else:
+            from src.features.coherencia import CoherenciaExtractor
+            from src.features.diferenciacion import DiferenciacionExtractor
+            from src.features.percepcion import PercepcionExtractor
+            coherencia_ext = CoherenciaExtractor()
+            diferenciacion_ext = DiferenciacionExtractor()
+            percepcion_ext = PercepcionExtractor()
+            if use_llm:
+                print("  LLM: disabled (no API key)")
+
+        features_by_dim["coherencia"] = coherencia_ext.extract(web=web_data, exa=exa_data)
+        features_by_dim["diferenciacion"] = diferenciacion_ext.extract(
+            web=web_data, exa=exa_data, competitor_data=competitor_data, screenshot_url=screenshot_url
+        )
+        features_by_dim["percepcion"] = percepcion_ext.extract(web=web_data, exa=exa_data)
+
+        for dim, feats in features_by_dim.items():
+            llm_feats = sum(1 for f in feats.values() if f.source == "llm")
+            heuristic_feats = len(feats) - llm_feats
+            src_info = f"{heuristic_feats}h" + (f"+{llm_feats}llm" if llm_feats else "")
+            print(f"  {dim}: {len(feats)} features ({src_info})")
+
+        _emit_progress(progress_cb, "scoring")
+        _check_cancel(cancel_check)
+        print("[3/4] Scoring...")
+        engine = ScoringEngine(calibration_profile=calibration_profile)
+        brand_score = engine.score_brand(url, brand_name, features_by_dim)
+        if run_id:
+            _store_safely(store, "feature save", lambda: store.save_features(run_id, features_by_dim))
+            _store_safely(store, "score save", lambda: store.save_scores(run_id, brand_score))
+
+        _emit_progress(progress_cb, "finalizing")
+        _check_cancel(cancel_check)
+        print("[4/4] Generating report...\n")
+        summary = engine.generate_summary(brand_score)
+        print(summary)
+
+        print("\n--- Feature Details ---")
+        for dim_name, dim_score in brand_score.dimensions.items():
+            print(f"\n[{dim_name}]")
+            for feat_name, feat in dim_score.features.items():
+                conf = f"(conf: {feat.confidence:.0%})" if feat.confidence < 1 else ""
+                src = f"src={feat.source}"
+                print(f"  {feat_name:30s} {feat.value:6.1f}  {conf}  {src}")
+                if feat.raw_value:
+                    raw = feat.raw_value[:120] + "..." if len(str(feat.raw_value)) > 120 else feat.raw_value
+                    print(f"    raw: {raw}")
+
+        result = {
+            "brand": brand_score.brand_name,
+            "brand_profile": _build_brand_profile(brand_score.brand_name, brand_score.url, store),
+            "url": brand_score.url,
+            "run_id": run_id,
+            "niche_classification": niche_classification,
+            "calibration_profile": calibration_profile,
+            "profile_source": profile_source,
+            "composite_score": brand_score.composite_score,
+            "dimensions": brand_score.breakdown,
+            "llm_used": use_llm and llm is not None,
+            "social_scraped": social_data is not None and len(social_data.platforms) > 0,
+            "audit": (
+                _build_run_audit_context(
+                    store,
+                    calibration_profile=calibration_profile,
+                    niche_classification=niche_classification,
+                )
+                if store
+                else _build_run_audit_context(
+                    calibration_profile=calibration_profile,
+                    niche_classification=niche_classification,
+                )
+            ),
+            "timestamp": datetime.now().isoformat(),
+        }
+        if run_id:
+            _store_safely(store, "run audit save", lambda: store.save_run_audit(run_id, result["audit"]))
+
+        print("\n--- JSON ---")
+        print(json.dumps(result, indent=2))
+        output_path = _save_result(result)
+        print(f"\nSaved result to: {output_path}")
+        if run_id:
+            _store_safely(
+                store,
+                "run finalize",
+                lambda: store.finalize_run(
+                    run_id=run_id,
+                    composite_score=brand_score.composite_score,
+                    llm_used=use_llm and llm is not None,
+                    social_scraped=social_data is not None and len(social_data.platforms) > 0,
+                    result_path=str(output_path),
+                    summary=summary,
+                ),
+            )
+        return result
+    finally:
+        if store:
+            _store_safely(store, "close", store.close)
+
+
+def add_feedback(
+    note: str,
+    run_id: int | None = None,
+    brand_name: str | None = None,
+    url: str | None = None,
+    dimension_name: str | None = None,
+    feature_name: str | None = None,
+    expected_score: float | None = None,
+    actual_score: float | None = None,
+) -> int:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        target_run_id = run_id or store.get_latest_run_id(brand_name=brand_name, url=url)
+        if not target_run_id:
+            raise ValueError("No matching run found for feedback")
+        annotation_id = store.add_annotation(
+            run_id=target_run_id,
+            note=note,
+            dimension_name=dimension_name,
+            feature_name=feature_name,
+            expected_score=expected_score,
+            actual_score=actual_score,
+        )
+        print(f"Saved annotation {annotation_id} for run {target_run_id}")
+        return annotation_id
+    finally:
+        store.close()
+
+
+def learn(run_id: int | None = None, brand_name: str | None = None, url: str | None = None) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        target_run_id = run_id or store.get_latest_run_id(brand_name=brand_name, url=url)
+        if not target_run_id:
+            raise ValueError("No matching run found for learning analysis")
+
+        snapshot = store.get_run_snapshot(target_run_id)
+        analyzer = CalibrationAnalyzer()
+        recommendations = analyzer.analyze_snapshot(snapshot)
+        recommendations.extend(analyzer.analyze_annotations(store.list_annotations(brand_name=brand_name)))
+
+        payload = [
+            {
+                "scope": rec.scope,
+                "target": rec.target,
+                "severity": rec.severity,
+                "message": rec.message,
+                "evidence": rec.evidence,
+            }
+            for rec in recommendations
+        ]
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def list_runs(brand_name: str | None = None, url: str | None = None, limit: int = 20) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        runs = store.list_runs(brand_name=brand_name, url=url, limit=limit)
+        print(json.dumps(runs, indent=2))
+        return runs
+    finally:
+        store.close()
+
+
+def list_brands(limit: int = 50) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        brands = store.list_brands(limit=limit)
+        print(json.dumps(brands, indent=2))
+        return brands
+    finally:
+        store.close()
+
+
+def list_profiles() -> list[dict]:
+    payload = list_calibration_profiles()
+    print(json.dumps(payload, indent=2))
+    return payload
+
+
+def benchmark_profiles(
+    spec_path: str,
+    *,
+    profiles: list[str] | None = None,
+    include_auto: bool = True,
+    use_llm: bool = True,
+    use_social: bool = True,
+) -> dict:
+    spec_file = Path(spec_path)
+    spec = json.loads(spec_file.read_text(encoding="utf-8"))
+    benchmark_name = spec.get("name") or spec_file.stem
+    brands = spec.get("brands", [])
+    if not brands:
+        raise ValueError("Benchmark spec must include at least one brand")
+
+    selected_profiles = profiles or ["base"]
+    invalid_profiles = [
+        profile_id
+        for profile_id in selected_profiles
+        if profile_id not in {item["profile_id"] for item in list_calibration_profiles()}
+    ]
+    if invalid_profiles:
+        raise ValueError(f"Unknown calibration profiles: {', '.join(invalid_profiles)}")
+
+    variants = []
+    if include_auto:
+        variants.append({"label": "auto", "profile": None, "source": "auto"})
+    for profile_id in selected_profiles:
+        variants.append({"label": profile_id, "profile": profile_id, "source": "manual"})
+
+    results = []
+    summary = {
+        "variants": {variant["label"]: {"count": 0, "average_composite": None} for variant in variants},
+        "niche_matches": {"matched": 0, "mismatched": 0, "unscored": 0},
+    }
+    variant_scores: dict[str, list[float]] = {variant["label"]: [] for variant in variants}
+
+    for brand in brands:
+        url = brand["url"]
+        item_results = []
+        for variant in variants:
+            result = run(
+                url,
+                brand_name=brand.get("brand_name"),
+                use_llm=use_llm,
+                use_social=use_social,
+                calibration_profile_override=variant["profile"],
+            )
+            expected_niche = brand.get("expected_niche")
+            expected_subtype = brand.get("expected_subtype")
+            predicted_niche = result.get("niche_classification", {}).get("predicted_niche")
+            predicted_subtype = result.get("niche_classification", {}).get("predicted_subtype")
+            niche_match = None if not expected_niche else expected_niche == predicted_niche
+            subtype_match = None if not expected_subtype else expected_subtype == predicted_subtype
+            if expected_niche:
+                if niche_match:
+                    summary["niche_matches"]["matched"] += 1
+                else:
+                    summary["niche_matches"]["mismatched"] += 1
+            else:
+                summary["niche_matches"]["unscored"] += 1
+            summary.setdefault("subtype_matches", {"matched": 0, "mismatched": 0, "unscored": 0})
+            if expected_subtype:
+                if subtype_match:
+                    summary["subtype_matches"]["matched"] += 1
+                else:
+                    summary["subtype_matches"]["mismatched"] += 1
+            else:
+                summary["subtype_matches"]["unscored"] += 1
+
+            variant_payload = {
+                "variant": variant["label"],
+                "profile_source": result.get("profile_source"),
+                "calibration_profile": result.get("calibration_profile"),
+                "run_id": result.get("run_id"),
+                "composite_score": result.get("composite_score"),
+                "dimensions": result.get("dimensions"),
+                "predicted_niche": predicted_niche,
+                "predicted_subtype": predicted_subtype,
+                "niche_confidence": result.get("niche_classification", {}).get("confidence"),
+                "expected_niche": expected_niche,
+                "expected_subtype": expected_subtype,
+                "niche_match": niche_match,
+                "subtype_match": subtype_match,
+            }
+            item_results.append(variant_payload)
+            if variant_payload["composite_score"] is not None:
+                variant_scores[variant["label"]].append(float(variant_payload["composite_score"]))
+
+        results.append(
+            {
+                "brand_name": brand.get("brand_name"),
+                "url": url,
+                "notes": brand.get("notes"),
+                "results": item_results,
+            }
+        )
+
+    for variant in variants:
+        label = variant["label"]
+        scores = variant_scores[label]
+        summary["variants"][label]["count"] = len(scores)
+        summary["variants"][label]["average_composite"] = round(mean(scores), 1) if scores else None
+
+    payload = {
+        "benchmark_name": benchmark_name,
+        "spec_path": str(spec_file),
+        "generated_at": datetime.now().isoformat(),
+        "use_llm": use_llm,
+        "use_social": use_social,
+        "variants": variants,
+        "summary": summary,
+        "brands": results,
+    }
+    output_path = _save_benchmark_result(payload)
+    payload["output_path"] = str(output_path)
+    print(json.dumps(payload, indent=2))
+    return payload
+
+
+def list_feedback(brand_name: str | None = None) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        annotations = store.list_annotations(brand_name=brand_name)
+        print(json.dumps(annotations, indent=2))
+        return annotations
+    finally:
+        store.close()
+
+
+def show_run(run_id: int) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        snapshot = store.get_run_snapshot(run_id)
+        if not snapshot:
+            raise ValueError(f"Run {run_id} not found")
+        print(json.dumps(snapshot, indent=2))
+        return snapshot
+    finally:
+        store.close()
+
+
+def brand_report(brand_name: str, limit: int = 10) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        report = store.get_brand_report(brand_name, limit=limit)
+        runs = report["runs"]
+        if not runs:
+            print(json.dumps(report, indent=2))
+            return report
+
+        composites = [run["composite_score"] for run in runs if run["composite_score"] is not None]
+        newest = composites[0] if composites else None
+        oldest = composites[-1] if composites else None
+        trend = None
+        if newest is not None and oldest is not None and len(composites) >= 2:
+            trend = round(newest - oldest, 1)
+
+        dimensions_summary = {}
+        for dimension_name, series in report["dimension_series"].items():
+            values = [item["score"] for item in series]
+            dimensions_summary[dimension_name] = {
+                "latest": values[0],
+                "average": round(mean(values), 1),
+                "trend": round(values[0] - values[-1], 1) if len(values) >= 2 else 0.0,
+                "samples": len(values),
+            }
+
+        feedback_summary = {
+            "count": len(report["annotations"]),
+            "dimensions": {},
+        }
+        for annotation in report["annotations"]:
+            dim = annotation.get("dimension_name") or "general"
+            feedback_summary["dimensions"][dim] = feedback_summary["dimensions"].get(dim, 0) + 1
+
+        payload = {
+            "brand_name": brand_name,
+            "brand_profile": report.get("brand_profile"),
+            "run_count": len(runs),
+            "latest_composite": newest,
+            "average_composite": round(mean(composites), 1) if composites else None,
+            "composite_trend": trend,
+            "latest_scoring_state_fingerprint": runs[0].get("scoring_state_fingerprint"),
+            "latest_predicted_niche": runs[0].get("predicted_niche"),
+            "latest_predicted_subtype": runs[0].get("predicted_subtype"),
+            "latest_niche_confidence": runs[0].get("niche_confidence"),
+            "latest_calibration_profile": runs[0].get("calibration_profile"),
+            "scoring_states": {},
+            "dimensions": dimensions_summary,
+            "feedback": feedback_summary,
+            "recent_runs": runs,
+        }
+        for run_item in runs:
+            fingerprint = run_item.get("scoring_state_fingerprint")
+            if fingerprint:
+                payload["scoring_states"][fingerprint] = payload["scoring_states"].get(fingerprint, 0) + 1
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def propose_calibration(brand_name: str, limit: int = 20, persist: bool = False) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        report = store.get_brand_report(brand_name, limit=limit)
+        analyzer = CalibrationAnalyzer()
+        candidates = analyzer.propose_candidates(report, report.get("annotations", []))
+
+        payload = []
+        for candidate in candidates:
+            item = {
+                "scope": candidate.scope,
+                "target": candidate.target,
+                "proposal": candidate.proposal,
+                "rationale": candidate.rationale,
+                "severity": candidate.severity,
+                "evidence": candidate.evidence,
+            }
+            if persist:
+                item["candidate_id"] = store.save_calibration_candidate(
+                    brand_name=brand_name,
+                    scope=candidate.scope,
+                    target=candidate.target,
+                    proposal=candidate.proposal,
+                    rationale=candidate.rationale,
+                )
+            payload.append(item)
+
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def list_candidates(brand_name: str | None = None, status: str | None = None, limit: int = 50) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        candidates = store.list_calibration_candidates(brand_name=brand_name, status=status, limit=limit)
+        print(json.dumps(candidates, indent=2))
+        return candidates
+    finally:
+        store.close()
+
+
+def review_candidate(candidate_id: int, status: str) -> dict:
+    if status not in {"approved", "rejected", "proposed", "applied"}:
+        raise ValueError("Status must be one of: proposed, approved, rejected, applied")
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        candidate = store.get_calibration_candidate(candidate_id)
+        if not candidate:
+            raise ValueError(f"Candidate {candidate_id} not found")
+        store.update_calibration_candidate_status(candidate_id, status)
+        candidate["status"] = status
+        print(json.dumps(candidate, indent=2))
+        return candidate
+    finally:
+        store.close()
+
+
+def apply_candidates(candidate_ids: list[int] | None = None, brand_name: str | None = None) -> list[dict]:
+    dimensions_path = str(DIMENSIONS_PATH)
+    engine_path = str(ENGINE_PATH)
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        if candidate_ids:
+            candidates = []
+            for candidate_id in candidate_ids:
+                candidate = store.get_calibration_candidate(candidate_id)
+                if not candidate:
+                    raise ValueError(f"Candidate {candidate_id} not found")
+                candidates.append(candidate)
+        else:
+            candidates = store.list_calibration_candidates(brand_name=brand_name, status="approved", limit=100)
+
+        version_before_id = None
+        version_after_id = None
+        results = []
+        for candidate in candidates:
+            if candidate["status"] != "approved":
+                results.append({
+                    "candidate_id": candidate["id"],
+                    "applied": False,
+                    "reason": f"Candidate status is {candidate['status']}, not approved",
+                })
+                continue
+            try:
+                if version_before_id is None:
+                    state_before = _read_calibration_state(store)
+                    version_before_id = store.save_calibration_version(
+                        label=f"before-apply-{datetime.now().isoformat()}",
+                        dimensions_content=state_before["dimensions_content"],
+                        engine_content=state_before["engine_content"],
+                        gate_config=state_before["gate_config"],
+                    )
+                applied = apply_candidate(dimensions_path, engine_path, candidate)
+                applied["candidate_id"] = candidate["id"]
+                results.append(applied)
+                if applied["applied"]:
+                    state_after = _read_calibration_state(store)
+                    version_after_id = store.save_calibration_version(
+                        label=f"after-apply-{datetime.now().isoformat()}",
+                        dimensions_content=state_after["dimensions_content"],
+                        engine_content=state_after["engine_content"],
+                        gate_config=state_after["gate_config"],
+                    )
+                    applied["version_before_id"] = version_before_id
+                    applied["version_after_id"] = version_after_id
+                    store.update_calibration_candidate_status(candidate["id"], "applied")
+                    store.save_applied_calibration(candidate["id"], version_before_id, version_after_id)
+            except CandidateApplyError as e:
+                results.append({
+                    "candidate_id": candidate["id"],
+                    "applied": False,
+                    "reason": str(e),
+                })
+
+        print(json.dumps(results, indent=2))
+        return results
+    finally:
+        store.close()
+
+
+def run_experiment(brand_name: str, candidate_ids: list[int] | None = None) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        before_run_id = store.get_latest_run_id(brand_name=brand_name)
+        if not before_run_id:
+            raise ValueError(f"No runs found for brand {brand_name}")
+        before_snapshot = store.get_run_snapshot(before_run_id)
+        if not before_snapshot:
+            raise ValueError(f"Run {before_run_id} not found")
+        baseline = before_snapshot["run"]
+    finally:
+        store.close()
+
+    applied_results = apply_candidates(candidate_ids=candidate_ids, brand_name=brand_name)
+    applied_candidate_ids = [item["candidate_id"] for item in applied_results if item.get("applied")]
+    if not applied_candidate_ids:
+        raise ValueError("No approved candidates were applied; experiment aborted")
+    applied_version_before_id = next(
+        (item["version_before_id"] for item in applied_results if item.get("applied") and item.get("version_before_id")),
+        None,
+    )
+    applied_version_after_id = None
+    for item in applied_results:
+        if item.get("applied") and item.get("version_after_id"):
+            applied_version_after_id = item["version_after_id"]
+
+    rerun_result = run(
+        baseline["url"],
+        brand_name=baseline["brand_name"],
+        use_llm=bool(baseline["use_llm"]),
+        use_social=bool(baseline["use_social"]),
+    )
+    after_run_id = rerun_result.get("run_id")
+    if not after_run_id:
+        raise ValueError("Rerun did not produce a persisted run_id")
+
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        after_snapshot = store.get_run_snapshot(after_run_id)
+        if not after_snapshot:
+            raise ValueError(f"Run {after_run_id} not found after rerun")
+
+        summary = _build_experiment_summary(before_snapshot, after_snapshot, applied_results)
+        experiment_id = store.save_experiment(
+            brand_name=baseline["brand_name"],
+            url=baseline["url"],
+            before_run_id=before_run_id,
+            after_run_id=after_run_id,
+            candidate_ids=applied_candidate_ids,
+            summary=summary,
+            version_before_id=applied_version_before_id,
+            version_after_id=applied_version_after_id,
+            before_scoring_state_fingerprint=before_snapshot["run"].get("scoring_state_fingerprint"),
+            after_scoring_state_fingerprint=after_snapshot["run"].get("scoring_state_fingerprint"),
+        )
+        payload = {
+            "experiment_id": experiment_id,
+            "apply_results": applied_results,
+            "summary": summary,
+        }
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def list_experiments(brand_name: str | None = None, limit: int = 20) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        experiments = store.list_experiments(brand_name=brand_name, limit=limit)
+        print(json.dumps(experiments, indent=2))
+        return experiments
+    finally:
+        store.close()
+
+
+def list_versions(limit: int = 20) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        versions = store.list_calibration_versions(limit=limit)
+        print(json.dumps(versions, indent=2))
+        return versions
+    finally:
+        store.close()
+
+
+def rollback_version(version_id: int) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        version = store.get_calibration_version(version_id)
+        if not version:
+            raise ValueError(f"Calibration version {version_id} not found")
+        current_state = _read_calibration_state(store)
+        rollback_source_id = store.save_calibration_version(
+            label=f"pre-rollback-{datetime.now().isoformat()}",
+            dimensions_content=current_state["dimensions_content"],
+            engine_content=current_state["engine_content"],
+            gate_config=current_state["gate_config"],
+        )
+        _restore_calibration_state(version, store)
+        restored_state = _read_calibration_state(store)
+        restored_version_id = store.save_calibration_version(
+            label=f"rollback-to-{version_id}",
+            dimensions_content=restored_state["dimensions_content"],
+            engine_content=restored_state["engine_content"],
+            gate_config=restored_state["gate_config"],
+        )
+        payload = {
+            "rolled_back": True,
+            "target_version_id": version_id,
+            "rollback_source_version_id": rollback_source_id,
+            "restored_version_id": restored_version_id,
+            "label": version["label"],
+        }
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def promote_baseline(version_id: int, label: str | None = None, force: bool = False) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        version = store.get_calibration_version(version_id)
+        if not version:
+            raise ValueError(f"Calibration version {version_id} not found")
+        experiment = store.get_latest_experiment_for_version(version_id)
+        gate = _evaluate_promotion_gate(experiment, gate_config=version.get("gate_config"))
+        if not gate["allowed"] and not force:
+            payload = {
+                "promoted": False,
+                "version_id": version_id,
+                "label": label or version["label"],
+                "gate": gate,
+            }
+            print(json.dumps(payload, indent=2))
+            return payload
+        if version.get("gate_config") is not None:
+            store.upsert_gate_config(version["gate_config"])
+        baseline_id = store.promote_baseline(version_id=version_id, label=label or version["label"])
+        payload = {
+            "baseline_id": baseline_id,
+            "version_id": version_id,
+            "label": label or version["label"],
+            "promoted": True,
+            "forced": force,
+            "gate": gate,
+        }
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def list_baselines(limit: int = 20) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        payload = {
+            "active": store.get_active_baseline(),
+            "history": store.list_baselines(limit=limit),
+        }
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def get_gate_config() -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        payload = _load_gate_config(store)
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def set_gate_config(max_composite_drop: float | None = None, dimension_drops: dict | None = None) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        current = _load_gate_config(store)
+        if max_composite_drop is not None:
+            current["max_composite_drop"] = float(max_composite_drop)
+        if dimension_drops:
+            merged = dict(current.get("max_dimension_drops", {}))
+            merged.update({key: float(value) for key, value in dimension_drops.items()})
+            current["max_dimension_drops"] = merged
+        store.upsert_gate_config(current)
+        print(json.dumps(current, indent=2))
+        return current
+    finally:
+        store.close()
+
+
+def compare_version(version_id: int, brand_name: str) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        version = store.get_calibration_version(version_id)
+        if not version:
+            raise ValueError(f"Calibration version {version_id} not found")
+
+        target_experiment = store.get_latest_experiment_for_version(version_id, brand_name=brand_name)
+        active_baseline = store.get_active_baseline()
+        baseline_experiment = None
+        if active_baseline:
+            baseline_experiment = store.get_latest_experiment_for_version(
+                active_baseline["version_id"],
+                brand_name=brand_name,
+            )
+
+        payload = {
+            "brand_name": brand_name,
+            "target_version": {
+                "id": version["id"],
+                "label": version["label"],
+            },
+            "target_gate": _evaluate_promotion_gate(
+                target_experiment,
+                gate_config=version.get("gate_config") or _load_gate_config(store),
+            ),
+            "target_experiment": target_experiment,
+            "active_baseline": active_baseline,
+            "baseline_experiment": baseline_experiment,
+            "comparison": _compare_summaries(
+                target_experiment.get("summary") if target_experiment else None,
+                baseline_experiment.get("summary") if baseline_experiment else None,
+            ),
+        }
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def enqueue_analysis_job(
+    url: str,
+    brand_name: str | None = None,
+    use_llm: bool = True,
+    use_social: bool = True,
+) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        job_id = store.create_analysis_job(
+            url=url,
+            brand_name=brand_name,
+            use_llm=use_llm,
+            use_social=use_social,
+        )
+        payload = store.get_analysis_job(job_id)
+        print(json.dumps(payload, indent=2))
+        return payload
+    finally:
+        store.close()
+
+
+def get_analysis_job(job_id: int) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        job = store.get_analysis_job(job_id)
+        if not job:
+            raise ValueError(f"Analysis job {job_id} not found")
+        print(json.dumps(job, indent=2))
+        return job
+    finally:
+        store.close()
+
+
+def list_analysis_jobs(
+    brand_name: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        jobs = store.list_analysis_jobs(brand_name=brand_name, status=status, limit=limit)
+        print(json.dumps(jobs, indent=2))
+        return jobs
+    finally:
+        store.close()
+
+
+def execute_analysis_job(job_id: int) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        job = store.get_analysis_job(job_id)
+        if not job:
+            raise ValueError(f"Analysis job {job_id} not found")
+        if job["status"] not in {"queued"}:
+            return job
+        if job.get("cancel_requested"):
+            store.cancel_analysis_job(job_id)
+            cancelled = store.get_analysis_job(job_id)
+            print(json.dumps(cancelled, indent=2))
+            return cancelled
+        store.start_analysis_job(job_id)
+    finally:
+        store.close()
+
+    def progress_cb(phase: str) -> None:
+        progress_store = SQLiteStore(BRAND3_DB_PATH)
+        try:
+            progress_store.update_analysis_job_phase(job_id, phase)
+        finally:
+            progress_store.close()
+
+    def cancel_check() -> bool:
+        progress_store = SQLiteStore(BRAND3_DB_PATH)
+        try:
+            current = progress_store.get_analysis_job(job_id)
+            return bool(current and (current.get("cancel_requested") or current.get("status") == "cancelled"))
+        finally:
+            progress_store.close()
+
+    try:
+        result = run(
+            job["url"],
+            brand_name=job.get("brand_name"),
+            use_llm=bool(job.get("use_llm")),
+            use_social=bool(job.get("use_social")),
+            progress_cb=progress_cb,
+            cancel_check=cancel_check,
+        )
+        store = SQLiteStore(BRAND3_DB_PATH)
+        try:
+            store.complete_analysis_job(job_id, result.get("run_id"), result)
+            completed = store.get_analysis_job(job_id)
+            print(json.dumps(completed, indent=2))
+            return completed
+        finally:
+            store.close()
+    except AnalysisJobCancelled as exc:
+        store = SQLiteStore(BRAND3_DB_PATH)
+        try:
+            store.cancel_analysis_job(job_id, str(exc))
+            cancelled = store.get_analysis_job(job_id)
+            print(json.dumps(cancelled, indent=2))
+            return cancelled
+        finally:
+            store.close()
+    except Exception as exc:
+        store = SQLiteStore(BRAND3_DB_PATH)
+        try:
+            store.fail_analysis_job(job_id, str(exc))
+            failed = store.get_analysis_job(job_id)
+            print(json.dumps(failed, indent=2))
+            return failed
+        finally:
+            store.close()
+
+
+def cancel_analysis_job(job_id: int) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        job = store.get_analysis_job(job_id)
+        if not job:
+            raise ValueError(f"Analysis job {job_id} not found")
+        if job["status"] in {"done", "failed", "cancelled"}:
+            print(json.dumps(job, indent=2))
+            return job
+        store.request_analysis_job_cancel(job_id)
+        updated = store.get_analysis_job(job_id)
+        print(json.dumps(updated, indent=2))
+        return updated
+    finally:
+        store.close()
+
+
+def retry_analysis_job(job_id: int) -> dict:
+    store = SQLiteStore(BRAND3_DB_PATH)
+    try:
+        job = store.get_analysis_job(job_id)
+        if not job:
+            raise ValueError(f"Analysis job {job_id} not found")
+        if job["status"] not in {"failed", "cancelled"}:
+            raise ValueError(f"Analysis job {job_id} is not retryable from status {job['status']}")
+        store.requeue_analysis_job(job_id)
+        queued = store.get_analysis_job(job_id)
+        print(json.dumps(queued, indent=2))
+        return queued
+    finally:
+        store.close()

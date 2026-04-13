@@ -1,0 +1,54 @@
+{
+  "name": "frontier-startups-benchmark",
+  "brands": [
+    {
+      "brand_name": "Prior Labs",
+      "url": "https://priorlabs.ai/",
+      "expected_niche": "frontier_ai",
+      "expected_subtype": "model_lab",
+      "notes": "Tabular foundation-model company"
+    },
+    {
+      "brand_name": "CTGT",
+      "url": "https://ctgt.ai/",
+      "expected_niche": "enterprise_ai",
+      "expected_subtype": "ai_governance",
+      "notes": "Deterministic layer and audit/governance for enterprise AI"
+    },
+    {
+      "brand_name": "Jetty AI",
+      "url": "https://jettyai.cloud/",
+      "expected_niche": "base",
+      "expected_subtype": "startup_studio",
+      "notes": "AI startup foundry rather than a single-product company"
+    },
+    {
+      "brand_name": "Poetiq",
+      "url": "https://poetiq.ai/",
+      "expected_niche": "frontier_ai",
+      "expected_subtype": "ai_research_lab",
+      "notes": "Reasoning and safe-superintelligence positioning"
+    },
+    {
+      "brand_name": "Ricursive",
+      "url": "https://ricursive.com/",
+      "expected_niche": "frontier_ai",
+      "expected_subtype": "chip_ai",
+      "notes": "AI for chip design and semiconductor systems"
+    },
+    {
+      "brand_name": "Luminae AI",
+      "url": "https://luminae-ai.com/",
+      "expected_niche": "enterprise_ai",
+      "expected_subtype": "ai_governance",
+      "notes": "Runtime audit trails and assurance for AI systems"
+    },
+    {
+      "brand_name": "Bellu AI",
+      "url": "https://bellu.ai/",
+      "expected_niche": "physical_ai",
+      "expected_subtype": "physical_ai_data",
+      "notes": "Robotics and embodied AI data infrastructure"
+    }
+  ]
+}

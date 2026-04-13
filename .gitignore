@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+data/*.sqlite3
+data/*.db
+data/*.db-shm
+data/*.db-wal
+output/*.json
+output/**/*.json
