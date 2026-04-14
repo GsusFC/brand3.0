@@ -197,11 +197,23 @@ class PercepcionExtractor:
         ]
 
         if not review_results:
-            # No review presence at all
+            total_mentions = len(exa.mentions) + len(exa.news)
+            if total_mentions >= 5:
+                score = 50.0
+                confidence = 0.2
+            elif total_mentions >= 1:
+                score = 40.0
+                confidence = 0.25
+            else:
+                score = 30.0
+                confidence = 0.3
+
             return FeatureValue(
-                "review_quality", 25.0,
-                raw_value="no review platforms found",
-                confidence=0.5, source="exa",
+                "review_quality",
+                score,
+                raw_value=f"no review platforms found; mentions={total_mentions}",
+                confidence=confidence,
+                source="exa",
             )
 
         # Analyze sentiment in review content

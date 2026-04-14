@@ -67,6 +67,41 @@ class PercepcionExtractorTests(unittest.TestCase):
         self.assertEqual(trend.confidence, 0.1)
         self.assertEqual(trend.raw_value, "insufficient dated mentions")
 
+    def test_review_quality_is_neutral_when_brand_has_mentions_but_no_review_platforms(self):
+        exa = ExaData(
+            brand_name="Test Brand",
+            mentions=[
+                ExaResult(url=f"https://example.com/{idx}", title="Mention", text="strong traction")
+                for idx in range(4)
+            ],
+            news=[
+                ExaResult(url="https://news.example.com/item", title="Launch", text="new launch")
+            ],
+        )
+
+        feature = self.extractor._review_quality(exa)
+
+        self.assertEqual(feature.value, 50.0)
+        self.assertEqual(feature.confidence, 0.2)
+        self.assertIn("mentions=5", feature.raw_value)
+
+    def test_review_quality_uses_review_platforms_when_present(self):
+        exa = ExaData(
+            brand_name="Test Brand",
+            mentions=[
+                ExaResult(
+                    url="https://www.producthunt.com/posts/test-brand",
+                    title="Product Hunt",
+                    text="great innovative reliable product",
+                ),
+            ],
+        )
+
+        feature = self.extractor._review_quality(exa)
+
+        self.assertGreater(feature.value, 50.0)
+        self.assertIn("1 review platforms", feature.raw_value)
+
 
 class DiferenciacionExtractorTests(unittest.TestCase):
     def setUp(self):
