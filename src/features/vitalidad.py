@@ -15,6 +15,24 @@ from ..collectors.exa_collector import ExaData
 class VitalidadExtractor:
     """Extract vitalidad features."""
 
+    @staticmethod
+    def _top_text_lines(content: str, limit: int = 16) -> list[str]:
+        lines = []
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("!["):
+                continue
+            if line.startswith("[") and "](" in line:
+                continue
+            if len(line) < 4:
+                continue
+            lines.append(line)
+            if len(lines) >= limit:
+                break
+        return lines
+
     def extract(self, web: WebData = None, exa: ExaData = None) -> dict[str, FeatureValue]:
         features = {}
         features["content_frequency"] = self._content_frequency(web, exa)
@@ -148,21 +166,32 @@ class VitalidadExtractor:
         )
 
     def _tech_modernity(self, web: WebData = None) -> FeatureValue:
-        """Does the website use modern technology?"""
+        """Does the website show credible modern product/developer surface signals?"""
         if not web or web.error:
             return FeatureValue("tech_modernity", 0.0, confidence=0.5, source="web_scrape")
 
         content = web.markdown_content.lower()
-        score = 50.0  # neutral baseline
+        top_lines = self._top_text_lines(web.markdown_content, limit=18)
+        top_text = " ".join(top_lines).lower()
+        score = 45.0  # slightly conservative baseline
 
-        # Modern signals
-        modern_tech = [
-            "react", "next.js", "nextjs", "vercel", "cloudflare",
-            "tailwind", "stripe", "supabase", "prisma", "graphql",
-            "typescript", "webpack", "vite", "svelte",
+        # Signals that the product has real technical surface area.
+        dev_surface_signals = [
+            "api", "docs", "documentation", "playground", "github",
+            "open source", "deployment", "deploy", "integration",
+            "model context protocol", "sdk",
         ]
-        modern_hits = sum(1 for t in modern_tech if t in content)
-        score += min(modern_hits * 8, 30)
+        dev_hits = sum(1 for signal in dev_surface_signals if signal in top_text)
+        if dev_hits >= 2:
+            score += min((dev_hits - 1) * 6, 24)
+
+        infra_signals = [
+            "cloud", "aws", "azure", "databricks", "sagemaker",
+            "lakehouse", "deployment", "inference",
+        ]
+        infra_hits = sum(1 for signal in infra_signals if signal in top_text)
+        if infra_hits >= 1:
+            score += min(infra_hits * 4, 12)
 
         # Negative signals (outdated)
         outdated_signals = ["jquery", "bootstrap 3", "flash", "internet explorer", "ie8"]
@@ -171,13 +200,17 @@ class VitalidadExtractor:
 
         # HTTPS (basic modern signal)
         if web.url.startswith("https://"):
-            score += 10
+            score += 8
 
         return FeatureValue(
             "tech_modernity",
             max(0, min(score, 100.0)),
-            raw_value=f"modern={modern_hits}, outdated={outdated_hits}",
-            confidence=0.4,
+            raw_value=(
+                f"dev_surface={dev_hits}, "
+                f"infrastructure={infra_hits}, "
+                f"outdated={outdated_hits}"
+            ),
+            confidence=0.35,
             source="web_scrape",
         )
 

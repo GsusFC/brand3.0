@@ -7,6 +7,7 @@ from src.features.coherencia import CoherenciaExtractor
 from src.features.diferenciacion import DiferenciacionExtractor
 from src.features.percepcion import PercepcionExtractor
 from src.features.presencia import PresenciaExtractor
+from src.features.vitalidad import VitalidadExtractor
 
 
 class PercepcionExtractorTests(unittest.TestCase):
@@ -189,6 +190,40 @@ class PresenciaExtractorTests(unittest.TestCase):
         self.assertGreater(visibility.value, 20.0)
         self.assertLess(visibility.value, 60.0)
         self.assertIn("weighted=", visibility.raw_value)
+
+
+class VitalidadExtractorTests(unittest.TestCase):
+    def setUp(self):
+        self.extractor = VitalidadExtractor()
+
+    def test_tech_modernity_rewards_real_developer_surface_signals(self):
+        web = WebData(
+            url="https://example.dev",
+            title="Example Devtool",
+            markdown_content=(
+                "# Predictive infrastructure\n\n"
+                "API docs, playground, GitHub, and deployment options for AWS and Azure.\n"
+            ),
+        )
+
+        feature = self.extractor._tech_modernity(web)
+
+        self.assertGreater(feature.value, 60.0)
+        self.assertIn("dev_surface=", feature.raw_value)
+
+    def test_tech_modernity_does_not_inflate_from_framework_name_drops(self):
+        web = WebData(
+            url="https://example.com",
+            title="Example",
+            markdown_content=(
+                "# Example\n\n"
+                "We love React, Next.js, TypeScript, and Tailwind.\n"
+            ),
+        )
+
+        feature = self.extractor._tech_modernity(web)
+
+        self.assertLessEqual(feature.value, 55.0)
 
 
 class WebCollectorTests(unittest.TestCase):
