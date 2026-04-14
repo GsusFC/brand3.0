@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from src.collectors.exa_collector import ExaData, ExaResult
 from src.collectors.web_collector import WebData
@@ -304,6 +305,21 @@ Tabular foundation models for real-world data.
         self.assertNotIn("NecessaryAlways Active", cleaned)
         self.assertNotIn("Functional", cleaned)
 
+    def test_clean_markdown_discards_firecrawl_auth_prompt(self):
+        collector = WebCollector()
+        raw = """
+Turn websites into LLM-ready data
+
+Welcome! To get started, authenticate with your Firecrawl account.
+
+1. Login with browser
+2. Enter API key manually
+"""
+
+        cleaned = collector._clean_markdown_content(raw)
+
+        self.assertEqual(cleaned, "")
+
     def test_trim_to_title_drops_navigation_before_detected_title(self):
         collector = WebCollector()
         content = """
@@ -320,6 +336,54 @@ Tabular foundation models for real-world data.
 
         self.assertTrue(trimmed.startswith("One Model, Infinite Predictions"))
         self.assertNotIn("Models", trimmed)
+
+    def test_html_to_markdown_fallback_extracts_title_meta_and_body(self):
+        collector = WebCollector()
+        html = """
+<html>
+  <head>
+    <title>CTGT</title>
+    <meta name="description" content="Deterministic intelligence control for frontier AI." />
+  </head>
+  <body>
+    <nav>Home Pricing Docs</nav>
+    <h1>Deterministic control for frontier AI</h1>
+    <p>Runtime policy enforcement, steering, and audit trails for production systems.</p>
+    <script>console.log("ignore me")</script>
+  </body>
+</html>
+"""
+
+        content = collector._html_to_markdown_fallback(html)
+
+        self.assertIn("# CTGT", content)
+        self.assertIn("Deterministic intelligence control for frontier AI.", content)
+        self.assertIn("Runtime policy enforcement, steering, and audit trails", content)
+        self.assertNotIn("ignore me", content)
+
+    def test_scrape_uses_html_fallback_when_firecrawl_is_empty(self):
+        collector = WebCollector()
+        html = """
+<html>
+  <head>
+    <title>Poetiq</title>
+    <meta name="description" content="The fastest path to safe super intelligence." />
+  </head>
+  <body>
+    <h1>The fastest path to safe super intelligence</h1>
+    <p>Better reasoning systems for aligned advanced AI.</p>
+  </body>
+</html>
+"""
+
+        with patch.object(WebCollector, "_run_firecrawl", return_value={"content": ""}):
+            with patch.object(WebCollector, "_fetch_html_fallback", return_value=(html, "")):
+                data = collector.scrape("https://poetiq.ai/")
+
+        self.assertEqual(data.title, "Poetiq")
+        self.assertIn("safe super intelligence", data.markdown_content.lower())
+        self.assertEqual(data.meta_description, "The fastest path to safe super intelligence.")
+        self.assertEqual(data.error, "")
 
 
 class CoherenciaExtractorTests(unittest.TestCase):

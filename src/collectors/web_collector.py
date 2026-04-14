@@ -12,6 +12,9 @@ import re
 import subprocess
 import json
 from dataclasses import dataclass
+from html import unescape
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 
 @dataclass
@@ -59,6 +62,14 @@ class WebCollector:
         r"advertisement",
     ]
 
+    FIRECRAWL_PROMPT_PATTERNS = [
+        r"turn websites into llm-ready data",
+        r"authenticate with your firecrawl account",
+        r"login with browser",
+        r"enter api key manually",
+        r"you are not logged in",
+    ]
+
     def __init__(self, api_key: str = None):
         self.api_key = api_key
 
@@ -88,6 +99,10 @@ class WebCollector:
     def _clean_markdown_content(self, content: str) -> str:
         """Remove obvious cookie/consent UI sludge from scraped markdown."""
         if not content:
+            return ""
+
+        lowered_content = content.lower()
+        if any(re.search(pattern, lowered_content) for pattern in self.FIRECRAWL_PROMPT_PATTERNS):
             return ""
 
         cleaned_lines = []
@@ -191,19 +206,116 @@ class WebCollector:
                 return content
         return content
 
+    def _fetch_html_fallback(self, url: str) -> tuple[str, str]:
+        """Fetch raw HTML directly when Firecrawl returns no useful markdown."""
+        request = Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/123.0.0.0 Safari/537.36"
+                )
+            },
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                charset = response.headers.get_content_charset() or "utf-8"
+                html = response.read().decode(charset, errors="replace")
+                return html, ""
+        except (URLError, TimeoutError, ValueError) as exc:
+            return "", str(exc)
+
+    def _extract_html_title(self, html: str) -> str:
+        match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            return ""
+        return self._normalize_html_text(match.group(1))
+
+    def _extract_meta_description(self, html: str) -> str:
+        patterns = [
+            r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
+            r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\'](.*?)["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, flags=re.IGNORECASE | re.DOTALL)
+            if match:
+                return self._normalize_html_text(match.group(1))
+        return ""
+
+    def _normalize_html_text(self, text: str) -> str:
+        cleaned = unescape(re.sub(r"\s+", " ", text or "")).strip()
+        return cleaned
+
+    def _html_to_markdown_fallback(self, html: str) -> str:
+        """Extract a minimal, readable text snapshot from raw HTML."""
+        if not html:
+            return ""
+
+        title = self._extract_html_title(html)
+        meta_description = self._extract_meta_description(html)
+
+        body = re.sub(
+            r"<(script|style|noscript|svg|iframe)[^>]*>.*?</\1>",
+            " ",
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        block_matches = re.findall(
+            r"<(h1|h2|h3|p|li)[^>]*>(.*?)</\1>",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        lines = []
+        seen = set()
+        for _, fragment in block_matches:
+            text = re.sub(r"<[^>]+>", " ", fragment)
+            text = self._normalize_html_text(text)
+            if not text or len(text) < 12:
+                continue
+            lowered = text.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            lines.append(text)
+            if len(lines) >= 24:
+                break
+
+        content_parts = []
+        if title:
+            content_parts.append(f"# {title}")
+        if meta_description and meta_description.lower() != title.lower():
+            content_parts.append(meta_description)
+        content_parts.extend(lines)
+
+        return "\n\n".join(part for part in content_parts if part).strip()
+
     def scrape(self, url: str) -> WebData:
         """Scrape a website and return structured data."""
         data = WebData(url=url)
 
         # Basic scrape
         result = self._run_firecrawl(url)
-        if "error" in result:
+        if "error" not in result:
+            data.markdown_content = self._clean_markdown_content(result.get("content", ""))
+            data.title = self._extract_title(data.markdown_content)
+            data.markdown_content = self._trim_to_title(data.markdown_content, data.title)
+        else:
             data.error = result["error"]
-            return data
 
-        data.markdown_content = self._clean_markdown_content(result.get("content", ""))
-        data.title = self._extract_title(data.markdown_content)
-        data.markdown_content = self._trim_to_title(data.markdown_content, data.title)
+        if not data.markdown_content:
+            html, html_error = self._fetch_html_fallback(url)
+            if html:
+                data.html = html
+                data.meta_description = self._extract_meta_description(html)
+                data.title = self._extract_html_title(html) or data.title
+                data.markdown_content = self._html_to_markdown_fallback(html)
+                data.markdown_content = self._trim_to_title(data.markdown_content, data.title)
+                data.error = ""
+            elif html_error and not data.error:
+                data.error = html_error
 
         return data
 
