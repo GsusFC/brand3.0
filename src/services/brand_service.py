@@ -479,6 +479,7 @@ def run(
     brand_name: str = None,
     use_llm: bool = True,
     use_social: bool = True,
+    use_competitors: bool = True,
     calibration_profile_override: str | None = None,
     skip_visual_analysis: bool = False,
     progress_cb=None,
@@ -538,29 +539,33 @@ def run(
                     print(f"  Social: error - {e}")
                     social_data = None
 
-        competitor_collector = CompetitorCollector(
-            exa_collector=exa_collector,
-            web_collector=web_collector,
-            max_competitors=5,
-        )
-        competitor_data = _load_cached(
-            store, brand_name, url, "competitors", BRAND3_CACHE_TTL_HOURS, _from_competitor_payload
-        )
-        if competitor_data:
-            print(f"  Competitors: cache hit ({len(competitor_data.competitors)} competitors)")
-        else:
-            competitor_data = competitor_collector.collect(
-                brand_name=brand_name,
-                brand_url=effective_brand_url,
-                brand_web=web_data,
-                exa_data=exa_data,
+        competitor_data = None
+        if use_competitors:
+            competitor_collector = CompetitorCollector(
+                exa_collector=exa_collector,
+                web_collector=web_collector,
+                max_competitors=5,
             )
-            if run_id:
-                _store_safely(
-                    store,
-                    "competitor save",
-                    lambda: store.save_raw_input(run_id, "competitors", competitor_data),
+            competitor_data = _load_cached(
+                store, brand_name, url, "competitors", BRAND3_CACHE_TTL_HOURS, _from_competitor_payload
+            )
+            if competitor_data:
+                print(f"  Competitors: cache hit ({len(competitor_data.competitors)} competitors)")
+            else:
+                competitor_data = competitor_collector.collect(
+                    brand_name=brand_name,
+                    brand_url=effective_brand_url,
+                    brand_web=web_data,
+                    exa_data=exa_data,
                 )
+                if run_id:
+                    _store_safely(
+                        store,
+                        "competitor save",
+                        lambda: store.save_raw_input(run_id, "competitors", competitor_data),
+                    )
+        else:
+            print("  Competitors: skipped (--fast mode)")
 
         exa_texts = []
         if exa_data:
@@ -833,6 +838,7 @@ def benchmark_profiles(
     include_auto: bool = True,
     use_llm: bool = True,
     use_social: bool = True,
+    use_competitors: bool = True,
 ) -> dict:
     spec_file = Path(spec_path)
     spec = json.loads(spec_file.read_text(encoding="utf-8"))
@@ -872,6 +878,7 @@ def benchmark_profiles(
                 brand_name=brand.get("brand_name"),
                 use_llm=use_llm,
                 use_social=use_social,
+                use_competitors=use_competitors,
                 calibration_profile_override=variant["profile"],
                 skip_visual_analysis=True,
             )
@@ -937,6 +944,7 @@ def benchmark_profiles(
         "generated_at": datetime.now().isoformat(),
         "use_llm": use_llm,
         "use_social": use_social,
+        "use_competitors": use_competitors,
         "variants": variants,
         "summary": summary,
         "brands": results,

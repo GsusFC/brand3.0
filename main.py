@@ -40,8 +40,21 @@ def _build_run_audit_context(*args, **kwargs):
     return _delegate("_build_run_audit_context", *args, **kwargs)
 
 
-def run(url: str, brand_name: str = None, use_llm: bool = True, use_social: bool = True) -> dict:
-    return _delegate("run", url, brand_name=brand_name, use_llm=use_llm, use_social=use_social)
+def run(
+    url: str,
+    brand_name: str = None,
+    use_llm: bool = True,
+    use_social: bool = True,
+    use_competitors: bool = True,
+) -> dict:
+    return _delegate(
+        "run",
+        url,
+        brand_name=brand_name,
+        use_llm=use_llm,
+        use_social=use_social,
+        use_competitors=use_competitors,
+    )
 
 
 def add_feedback(*args, **kwargs):
@@ -348,6 +361,7 @@ if __name__ == "__main__":
         include_auto = True
         use_llm = True
         use_social = True
+        use_competitors = True
         i = 0
         while i < len(args):
             if args[i] == "--spec":
@@ -360,10 +374,12 @@ if __name__ == "__main__":
                 use_llm = False; i += 1
             elif args[i] == "--no-social":
                 use_social = False; i += 1
+            elif args[i] in {"--fast", "--no-competitors"}:
+                use_competitors = False; i += 1
             else:
                 i += 1
         if not spec_path:
-            print("Usage: python3 main.py benchmark --spec PATH [--profiles p1,p2] [--no-auto] [--no-llm] [--no-social]")
+            print("Usage: python3 main.py benchmark --spec PATH [--profiles p1,p2] [--no-auto] [--no-llm] [--no-social] [--fast|--no-competitors]")
             sys.exit(1)
         benchmark_profiles(
             spec_path,
@@ -371,6 +387,7 @@ if __name__ == "__main__":
             include_auto=include_auto,
             use_llm=use_llm,
             use_social=use_social,
+            use_competitors=use_competitors,
         )
         sys.exit(0)
 

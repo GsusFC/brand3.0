@@ -40,11 +40,18 @@ Con perfiles explícitos:
 scripts/run_benchmark_validation.sh examples/startup_benchmark.json base,frontier_ai,enterprise_ai,physical_ai
 ```
 
+Modo rápido para benchmarks exploratorios grandes (omite competidores):
+
+```bash
+scripts/run_benchmark_validation.sh examples/startup_benchmark.json base --fast
+```
+
 El script:
 
 - crea una DB temporal en `/tmp`
 - desactiva caché
 - ejecuta `main.py benchmark`
+- puede activar `--fast` para evitar bloqueos en `competitor collection`
 - deja el JSON del benchmark en `output/benchmarks/`
 
 ## Comparar dos benchmarks
