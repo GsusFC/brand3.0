@@ -479,6 +479,46 @@ class CoherenciaExtractorTests(unittest.TestCase):
         self.assertEqual(feature.value, 55.0)
         self.assertIn("policy layer", feature.raw_value)
 
+    def test_cross_channel_coherence_is_not_overly_punitive_for_startup_touchpoints(self):
+        web = WebData(
+            url="https://poetiq.ai/",
+            title="Poetiq",
+            markdown_content=(
+                "# Poetiq\n\n"
+                "Secure your place for the next generation of reasoning.\n"
+                "Your request has been received. We will be in touch shortly.\n"
+            ),
+        )
+        exa = ExaData(
+            brand_name="Poetiq",
+            mentions=[
+                ExaResult(
+                    url="https://poetiq.ai/blog/launch",
+                    title="Poetiq launch",
+                    text="Poetiq launches reasoning research platform.",
+                )
+            ],
+        )
+        extractor = CoherenciaExtractor()
+
+        feature = extractor._cross_channel_coherence(web, exa)
+
+        self.assertGreaterEqual(feature.value, 50.0)
+        self.assertIn("touchpoint=True", feature.raw_value)
+        self.assertIn("brand_url_mentioned=True", feature.raw_value)
+
+    def test_cross_channel_coherence_stays_low_when_site_has_no_touchpoints(self):
+        web = WebData(
+            url="https://example.com/",
+            title="Example",
+            markdown_content="# Example\n\nMinimal landing page.\n",
+        )
+        extractor = CoherenciaExtractor()
+
+        feature = extractor._cross_channel_coherence(web, exa=None)
+
+        self.assertLessEqual(feature.value, 25.0)
+
 
 if __name__ == "__main__":
     unittest.main()

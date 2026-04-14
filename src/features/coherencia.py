@@ -318,6 +318,9 @@ class CoherenciaExtractor:
             return FeatureValue("cross_channel_coherence", 0.0, confidence=0.3, source="none")
 
         content = web.markdown_content.lower()
+        brand_domain = ""
+        if web.url:
+            brand_domain = web.url.replace("https://", "").replace("http://", "").split("/")[0]
 
         # Check if web links to socials
         has_social_links = any(s in content for s in [
@@ -325,31 +328,53 @@ class CoherenciaExtractor:
             "facebook.com", "youtube.com", "tiktok.com",
         ])
 
-        # Check if web has contact info
+        # Check if web has explicit contact info
         has_contact = any(s in content for s in [
             "contact", "email", "@", "phone", "address",
+        ])
+
+        # Early-stage startups often expose a form / waitlist / demo request instead of full social mesh.
+        has_touchpoint = any(s in content for s in [
+            "request demo", "book a demo", "get in touch", "talk to sales",
+            "join waitlist", "waitlist", "apply", "your request has been received",
+            "we will be in touch", "secure your place", "sign up", "get started",
+        ])
+
+        has_owned_surface = any(s in content for s in [
+            "/docs", " docs", "/blog", " blog", "/about", " about",
+            "/careers", " careers", "/privacy", "privacy policy", "terms",
         ])
 
         # Check if social profiles mention the brand URL
         brand_url_mentioned = False
         if exa and exa.mentions:
             for r in exa.mentions:
-                if web.url and web.url.replace("https://", "").replace("http://", "").split("/")[0] in r.url:
+                if brand_domain and brand_domain in (r.url or ""):
                     brand_url_mentioned = True
                     break
 
-        score = 0.0
+        score = 20.0 if web.title else 10.0
         if has_social_links:
-            score += 40
+            score += 25
         if has_contact:
-            score += 30
+            score += 20
+        if has_touchpoint:
+            score += 20
+        if has_owned_surface:
+            score += 10
         if brand_url_mentioned:
-            score += 30
+            score += 15
 
         return FeatureValue(
             "cross_channel_coherence",
             min(score, 100.0),
-            raw_value=f"social_links={has_social_links}, contact={has_contact}",
+            raw_value=(
+                f"social_links={has_social_links}, "
+                f"contact={has_contact}, "
+                f"touchpoint={has_touchpoint}, "
+                f"owned_surface={has_owned_surface}, "
+                f"brand_url_mentioned={brand_url_mentioned}"
+            ),
             confidence=0.7,
             source="web_scrape+exa",
         )
