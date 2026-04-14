@@ -28,6 +28,20 @@ GENERIC_PHRASES = [
     "award winning", "trusted by", "global leader",
 ]
 
+CATEGORY_SUFFIXES = [
+    "platform", "tool", "service", "solution", "app", "software",
+    "infrastructure", "model", "models", "system", "systems",
+    "engine", "engines", "lab", "labs", "layer", "protocol",
+]
+
+CATEGORY_STOPWORDS = {
+    "that", "this", "with", "from", "your", "their", "about",
+    "have", "been", "will", "more", "also", "can", "each",
+    "making", "using", "used", "built", "designed", "made",
+    "real", "world", "better", "next", "infinite", "predictions",
+    "prediction", "teams", "company", "companies",
+}
+
 
 class CoherenciaExtractor:
     """Extract coherencia features."""
@@ -139,19 +153,7 @@ class CoherenciaExtractor:
         if not web:
             return FeatureValue("messaging_consistency", 0.0, confidence=0.3, source="none")
 
-        content = web.markdown_content.lower()
-
-        # ── Extract brand CATEGORY from web (what do they say they are?) ──
-        # Look for "X for Y", "the Y platform", "Y tool/service/solution"
-        category_signals = []
-        category_patterns = [
-            r'(?:the\s+)?(\w[\w\s]{3,30})\s+(?:platform|tool|service|solution|app|software)',
-            r'(?:built|designed|made)\s+(?:for|to)\s+(\w[\w\s]{3,30})',
-            r'(?:a|the)\s+(\w[\w\s]{3,30})\s+(?:for|that|which)',
-        ]
-        for pattern in category_patterns:
-            matches = re.findall(pattern, content[:2000])
-            category_signals.extend(m.strip()[:40] for m in matches)
+        category_signals = self._extract_category_signals(web)
 
         if not category_signals:
             # No clear category positioning — that's a problem
@@ -178,16 +180,17 @@ class CoherenciaExtractor:
             for r in exa.mentions[:8]
         )
 
-        # Check if any of the brand's category words appear in Exa descriptions
+        # Check if any of the brand's category concepts appear in Exa descriptions
         matches = 0
+        matched_signals = []
         for signal in category_signals:
-            # Extract 2-3 key words from each category signal
-            key_words = [w for w in signal.split() if len(w) > 3 and w not in {
-                "that", "this", "with", "from", "your", "their", "about",
-                "have", "been", "will", "more", "also", "can", "each"
-            }]
-            if any(w in exa_text for w in key_words[:3]):
+            key_words = self._signal_keywords(signal)
+            if len(key_words) >= 2 and sum(1 for w in key_words if w in exa_text) >= 2:
                 matches += 1
+                matched_signals.append(signal)
+            elif key_words and any(w in exa_text for w in key_words[:2]):
+                matches += 1
+                matched_signals.append(signal)
 
         ratio = matches / len(category_signals) if category_signals else 0
         score = 40 + (ratio * 60)  # 40-100 range
@@ -195,10 +198,80 @@ class CoherenciaExtractor:
         return FeatureValue(
             "messaging_consistency",
             min(score, 100.0),
-            raw_value=f"categories: {category_signals[:3]}, match_ratio: {ratio:.2f}",
+            raw_value=(
+                f"categories: {category_signals[:3]}, "
+                f"matched: {matched_signals[:3]}, "
+                f"match_ratio: {ratio:.2f}"
+            ),
             confidence=0.6,
             source="web_scrape+exa",
         )
+
+    def _extract_category_signals(self, web: WebData) -> list[str]:
+        signals = []
+
+        hero_lines = []
+        for line in web.markdown_content.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("!["):
+                continue
+            if stripped.startswith("[") and "](" in stripped:
+                continue
+            if len(stripped) < 8:
+                continue
+            hero_lines.append(stripped.lower())
+            if len(hero_lines) >= 12:
+                break
+
+        descriptive_lines = []
+        for idx, line in enumerate(hero_lines):
+            if idx == 0 and len(hero_lines) > 1:
+                # Skip the headline when a descriptive subheadline exists below it.
+                continue
+            descriptive_lines.append(line)
+        candidate_text = " ".join(descriptive_lines[:5])
+
+        patterns = [
+            rf'([a-z][\w-]*(?:\s+[a-z][\w-]*){{0,5}})\s+(?:{"|".join(CATEGORY_SUFFIXES)})\s+for\b',
+            rf'(?:pre-trained|open-source|enterprise-grade|deterministic|frontier)?\s*([a-z][\w-]*(?:\s+[a-z][\w-]*){{0,5}})\s+(?:{"|".join(CATEGORY_SUFFIXES)})\b',
+            r'([a-z][\w-]*(?:\s+[a-z][\w-]*){0,6})\s+for\s+[a-z][\w-]*(?:\s+[a-z][\w-]*){0,6}',
+        ]
+        for pattern in patterns:
+            signals.extend(match.strip()[:60] for match in re.findall(pattern, candidate_text))
+
+        for line in hero_lines:
+            if any(suffix in line for suffix in CATEGORY_SUFFIXES):
+                signals.append(line[:80])
+
+        deduped = []
+        seen = set()
+        for signal in signals:
+            normalized = " ".join(signal.split())
+            normalized = re.sub(r"^[^a-z]+", "", normalized)
+            if not normalized:
+                continue
+            keyword_tuple = tuple(self._signal_keywords(normalized))
+            if normalized in seen or keyword_tuple in seen:
+                continue
+            if len(keyword_tuple) == 0:
+                continue
+            deduped.append(normalized)
+            seen.add(normalized)
+            seen.add(keyword_tuple)
+        return deduped[:6]
+
+    def _signal_keywords(self, signal: str) -> list[str]:
+        words = re.findall(r"[a-z][a-z0-9-]+", signal.lower())
+        keywords = []
+        for word in words:
+            if len(word) <= 3:
+                continue
+            if word in CATEGORY_STOPWORDS:
+                continue
+            keywords.append(word)
+        return keywords[:4]
 
     def _tone_consistency(self, web: WebData = None, exa: ExaData = None) -> FeatureValue:
         """

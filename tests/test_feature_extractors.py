@@ -232,6 +232,49 @@ class CoherenciaExtractorTests(unittest.TestCase):
         self.assertEqual(feature.source, "web_scrape_heuristic")
         self.assertIn("visual analysis skipped", feature.raw_value)
 
+    def test_messaging_consistency_extracts_category_from_hero_copy(self):
+        web = WebData(
+            url="https://priorlabs.ai",
+            title="One Model, Infinite Predictions",
+            markdown_content=(
+                "# One Model, Infinite Predictions\n\n"
+                "Pre-trained tabular foundation models for making predictions on structured data.\n\n"
+                "Talk to sales\n"
+            ),
+        )
+        exa = ExaData(
+            brand_name="Prior Labs",
+            mentions=[
+                ExaResult(
+                    url="https://example.com/post-1",
+                    title="Prior Labs launches tabular foundation model",
+                    text="The company builds pre-trained foundation models for structured data prediction.",
+                )
+            ],
+        )
+        extractor = CoherenciaExtractor()
+
+        feature = extractor._messaging_consistency(web, exa)
+
+        self.assertGreater(feature.value, 60.0)
+        self.assertIn("tabular foundation models", feature.raw_value)
+
+    def test_messaging_consistency_with_web_category_but_no_exa_data_is_not_default_failure(self):
+        web = WebData(
+            url="https://example.com",
+            title="Deterministic AI",
+            markdown_content=(
+                "# Deterministic AI\n\n"
+                "A deterministic policy layer for enterprise AI governance.\n"
+            ),
+        )
+        extractor = CoherenciaExtractor()
+
+        feature = extractor._messaging_consistency(web, exa=None)
+
+        self.assertEqual(feature.value, 55.0)
+        self.assertIn("policy layer", feature.raw_value)
+
 
 if __name__ == "__main__":
     unittest.main()
