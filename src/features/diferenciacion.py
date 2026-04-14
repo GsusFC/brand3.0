@@ -41,6 +41,14 @@ GENERIC_VALUE_PROPS = [
     "we help businesses grow", "we help companies succeed",
 ]
 
+UVP_SPECIFICITY_TERMS = [
+    "foundation model", "foundation models", "structured data", "tabular",
+    "deterministic", "audit trail", "audit trails", "runtime assurance",
+    "governance", "policy layer", "lakehouse", "reasoning",
+    "semiconductor", "chip design", "robotics", "embodied ai",
+    "physical ai", "developer tools", "api", "sdk", "protocol",
+]
+
 
 class DiferenciacionExtractor:
     """Extract diferenciación features."""
@@ -92,6 +100,8 @@ class DiferenciacionExtractor:
             return FeatureValue("unique_value_prop", 0.0, confidence=0.3, source="none")
 
         content = web.markdown_content.lower()
+        top_lines = self._top_text_lines(web.markdown_content, limit=12)
+        hero_text = " ".join(top_lines[:4]).lower()
 
         # Look for differentiation signals
         diff_signals = [
@@ -104,20 +114,22 @@ class DiferenciacionExtractor:
 
         diff_count = sum(1 for s in diff_signals if s in content)
 
-        # Look for specific numbers/proof points
-        proof_signals = re.findall(r'\d+%\s+\w+|\d+x\s+\w+|\$\d+|\d+\+?\s+(?:customers|users|clients|companies)', content)
-        has_proof = len(proof_signals) > 0
+        proof_signals = self._proof_signals(content, top_lines)
+        specificity_hits = [
+            term for term in UVP_SPECIFICITY_TERMS if term in hero_text
+        ]
 
         score = 20.0  # baseline
-        score += min(diff_count * 15, 50)
-        if has_proof:
-            score += 20
+        score += min(diff_count * 12, 36)
+        score += min(len(proof_signals) * 6, 18)
+        score += min(len(specificity_hits) * 9, 27)
 
         # Check first 500 chars for a clear positioning statement
-        first_chunk = web.markdown_content[:500].lower()
+        first_chunk = hero_text or web.markdown_content[:500].lower()
         has_positioning = any(s in first_chunk for s in [
             "we are the", "we're the", "the only", "built for",
-            "designed for", "made for", "for teams who",
+            "designed for", "made for", "for teams who", "for making",
+            "for structured", "for enterprise", "for developers",
         ])
         if has_positioning:
             score += 10
@@ -125,10 +137,57 @@ class DiferenciacionExtractor:
         return FeatureValue(
             "unique_value_prop",
             min(score, 100.0),
-            raw_value=f"diff_signals={diff_count}, proof_points={len(proof_signals)}",
+            raw_value=(
+                f"diff_signals={diff_count}, "
+                f"proof_points={len(proof_signals)}, "
+                f"specificity_hits={len(specificity_hits)}"
+            ),
             confidence=0.6,
             source="web_scrape",
         )
+
+    @staticmethod
+    def _top_text_lines(content: str, limit: int = 12) -> list[str]:
+        lines = []
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("!["):
+                continue
+            if line.startswith("[") and "](" in line:
+                continue
+            if len(line) < 4:
+                continue
+            lines.append(line)
+            if len(lines) >= limit:
+                break
+        return lines
+
+    @staticmethod
+    def _proof_signals(content: str, top_lines: list[str]) -> list[str]:
+        joined_top = " ".join(top_lines).lower()
+        patterns = [
+            r"\b\d+(?:\.\d+)?[kmb]?\+?\s+(?:customers|users|clients|companies|teams)\b",
+            r"\b\d+(?:\.\d+)?[kmb]?\s+(?:github stars|stars|downloads)\b",
+            r"\b\d+%\b",
+            r"\b\d+x\b",
+            r"published in [a-z0-9][a-z0-9\s-]{2,40}",
+            r"open source used at",
+        ]
+        hits = []
+        for pattern in patterns:
+            hits.extend(re.findall(pattern, content))
+            hits.extend(re.findall(pattern, joined_top))
+
+        deduped = []
+        seen = set()
+        for hit in hits:
+            normalized = " ".join(hit.split())
+            if normalized not in seen:
+                deduped.append(normalized)
+                seen.add(normalized)
+        return deduped
 
     def _generic_language(self, web: WebData = None) -> FeatureValue:
         """

@@ -71,6 +71,40 @@ class DiferenciacionExtractorTests(unittest.TestCase):
     def setUp(self):
         self.extractor = DiferenciacionExtractor()
 
+    def test_unique_value_prop_rewards_specific_technical_positioning_and_proof(self):
+        web = WebData(
+            url="https://priorlabs.ai",
+            title="One Model, Infinite Predictions",
+            markdown_content=(
+                "# One Model, Infinite Predictions\n\n"
+                "Pre-trained tabular foundation models for making predictions on structured data.\n\n"
+                "6K GITHUB STARS\n"
+                "3M DOWNLOADS\n"
+                "PUBLISHED IN NATURE\n"
+            ),
+        )
+
+        feature = self.extractor._unique_value_prop(web)
+
+        self.assertGreaterEqual(feature.value, 60.0)
+        self.assertIn("specificity_hits=", feature.raw_value)
+        self.assertIn("proof_points=", feature.raw_value)
+
+    def test_unique_value_prop_stays_low_for_generic_claims_without_proof(self):
+        web = WebData(
+            url="https://generic.example",
+            title="Generic SaaS",
+            markdown_content=(
+                "# Generic SaaS\n\n"
+                "We help businesses grow and improve efficiency.\n"
+                "Save time. Save money. Better results.\n"
+            ),
+        )
+
+        feature = self.extractor._unique_value_prop(web)
+
+        self.assertLessEqual(feature.value, 35.0)
+
     def test_generic_language_is_normalized_by_content_length(self):
         short_web = WebData(
             url="https://short.example",
