@@ -142,6 +142,24 @@ class DiferenciacionExtractorTests(unittest.TestCase):
 
         self.assertLessEqual(feature.value, 35.0)
 
+    def test_unique_value_prop_rewards_signature_and_proof_language_for_frontier_brands(self):
+        web = WebData(
+            url="https://ricursive.com",
+            title="Ricursive",
+            markdown_content=(
+                "# Ricursive\n\n"
+                "We develop frontier AI methods to reinvent chip development.\n"
+                "Ricursive Intelligence is a frontier AI lab focused on building self-improving systems.\n"
+                "We are the team behind AlphaChip (Nature 2021) and DAC Best Paper 2023.\n"
+            ),
+        )
+
+        feature = self.extractor._unique_value_prop(web)
+
+        self.assertGreaterEqual(feature.value, 50.0)
+        self.assertIn("proof_points=", feature.raw_value)
+        self.assertIn("signature_hits=", feature.raw_value)
+
     def test_generic_language_is_normalized_by_content_length(self):
         short_web = WebData(
             url="https://short.example",
@@ -190,6 +208,24 @@ class DiferenciacionExtractorTests(unittest.TestCase):
         score = self.extractor._generic_language(web)
 
         self.assertLessEqual(score.value, 30.0)
+
+    def test_brand_vocabulary_detects_signature_phrases_and_repeated_acronyms(self):
+        web = WebData(
+            url="https://ctgt.ai",
+            title="CTGT",
+            markdown_content=(
+                "# CTGT\n\n"
+                "The deterministic layer for frontier intelligence.\n"
+                "CTGT helps teams govern mission critical applications.\n"
+                "CTGT introduces a deterministic layer for frontier intelligence.\n"
+            ),
+        )
+
+        feature = self.extractor._brand_vocabulary(web, exa=None, competitor_data=None)
+
+        self.assertGreaterEqual(feature.value, 20.0)
+        self.assertIn("acronyms=", feature.raw_value)
+        self.assertIn("signature_phrases=", feature.raw_value)
 
 
 class PresenciaExtractorTests(unittest.TestCase):

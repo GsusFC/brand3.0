@@ -49,6 +49,20 @@ UVP_SPECIFICITY_TERMS = [
     "physical ai", "developer tools", "api", "sdk", "protocol",
 ]
 
+BRAND_SIGNATURE_PHRASES = [
+    "frontier intelligence",
+    "frontier ai",
+    "safe super intelligence",
+    "better reasoning",
+    "deterministic layer",
+    "mission critical applications",
+    "chip design",
+    "custom silicon",
+    "self-improving systems",
+    "structured data",
+    "tabular foundation models",
+]
+
 
 class DiferenciacionExtractor:
     """Extract diferenciación features."""
@@ -116,13 +130,19 @@ class DiferenciacionExtractor:
 
         proof_signals = self._proof_signals(content, top_lines)
         specificity_hits = [
-            term for term in UVP_SPECIFICITY_TERMS if term in hero_text
+            term
+            for term in UVP_SPECIFICITY_TERMS
+            if term in hero_text or term in content[:1200]
+        ]
+        signature_hits = [
+            phrase for phrase in BRAND_SIGNATURE_PHRASES if phrase in hero_text or phrase in content[:1200]
         ]
 
         score = 20.0  # baseline
         score += min(diff_count * 12, 36)
         score += min(len(proof_signals) * 6, 18)
         score += min(len(specificity_hits) * 9, 27)
+        score += min(len(signature_hits) * 6, 18)
 
         # Check first 500 chars for a clear positioning statement
         first_chunk = hero_text or web.markdown_content[:500].lower()
@@ -140,7 +160,8 @@ class DiferenciacionExtractor:
             raw_value=(
                 f"diff_signals={diff_count}, "
                 f"proof_points={len(proof_signals)}, "
-                f"specificity_hits={len(specificity_hits)}"
+                f"specificity_hits={len(specificity_hits)}, "
+                f"signature_hits={len(signature_hits)}"
             ),
             confidence=0.6,
             source="web_scrape",
@@ -174,6 +195,12 @@ class DiferenciacionExtractor:
             r"\b\d+x\b",
             r"published in [a-z0-9][a-z0-9\s-]{2,40}",
             r"open source used at",
+            r"validated by",
+            r"from the creator of",
+            r"team behind",
+            r"best paper",
+            r"fortune 500",
+            r"\bnature\b",
         ]
         hits = []
         for pattern in patterns:
@@ -361,23 +388,38 @@ class DiferenciacionExtractor:
         branded_counter = Counter(branded_pattern)
         branded_terms = [t for t, c in branded_counter.items() if c >= 2]
 
+        acronyms = re.findall(r"\b[A-Z]{2,6}\b", content)
+        acronym_counter = Counter(acronyms)
+        repeated_acronyms = [
+            token for token, count in acronym_counter.items()
+            if count >= 2 and token not in {"AI", "API", "SDK", "LLM"}
+        ]
+
         # Look for coined phrases in quotes
         coined = re.findall(r'"([^"]{5,40})"', content)
+
+        signature_phrases = self._signature_phrases(content)
 
         score = 0.0
         score += min(len(trademarks) * 20, 40)
         score += min(len(branded_terms) * 15, 40)
         score += min(len(coined) * 5, 20)
+        score += min(len(repeated_acronyms) * 10, 20)
+        score += min(len(signature_phrases) * 8, 32)
 
         raw_parts = [
             f"trademarks={len(trademarks)}",
             f"branded_terms={len(branded_terms)}",
             f"coined={len(coined)}",
+            f"acronyms={len(repeated_acronyms)}",
+            f"signature_phrases={len(signature_phrases)}",
         ]
 
         # Bonus: check if branded terms are unique vs competitors
         if competitor_data and competitor_data.comparisons:
             brand_kw = set(t.lower() for t in branded_terms)
+            brand_kw.update(token.lower() for token in repeated_acronyms)
+            brand_kw.update(phrase.lower() for phrase in signature_phrases)
             if brand_kw:
                 all_comp_kw = set()
                 for comp in competitor_data.competitors:
@@ -387,6 +429,15 @@ class DiferenciacionExtractor:
                             comp.web_data.markdown_content
                         )
                         all_comp_kw.update(t.lower() for t in comp_branded)
+                        all_comp_kw.update(
+                            token.lower()
+                            for token in re.findall(r"\b[A-Z]{2,6}\b", comp.web_data.markdown_content)
+                            if token not in {"AI", "API", "SDK", "LLM"}
+                        )
+                        all_comp_kw.update(
+                            phrase.lower()
+                            for phrase in self._signature_phrases(comp.web_data.markdown_content)
+                        )
 
                 unique_terms = brand_kw - all_comp_kw
                 if unique_terms:
@@ -401,6 +452,15 @@ class DiferenciacionExtractor:
             confidence=0.7,
             source="web_scrape" + ("+competitor_comparison" if competitor_data else ""),
         )
+
+    @staticmethod
+    def _signature_phrases(content: str) -> list[str]:
+        phrases = []
+        lowered = content.lower()
+        for phrase in BRAND_SIGNATURE_PHRASES:
+            if phrase in lowered:
+                phrases.append(phrase)
+        return phrases
 
     @staticmethod
     def _extract_keywords(text: str, top_n: int = 30) -> set:
