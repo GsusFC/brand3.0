@@ -569,9 +569,18 @@ def run(
 
         exa_texts = []
         if exa_data:
+            # Keep niche classification high-precision: full mention bodies are noisy and
+            # regularly include unrelated keywords from long-form pages.
             exa_texts.extend([item.title for item in exa_data.mentions if item.title])
-            exa_texts.extend([item.text for item in exa_data.mentions if item.text])
             exa_texts.extend([item.summary for item in exa_data.mentions if item.summary])
+            for item in exa_data.mentions:
+                if not item.highlights:
+                    continue
+                exa_texts.extend(
+                    str(highlight).strip()
+                    for highlight in item.highlights[:2]
+                    if str(highlight).strip()
+                )
             exa_texts.extend([item.title for item in exa_data.news if item.title])
         competitor_names = []
         if competitor_data:

@@ -31,15 +31,13 @@ PROFILE_SIGNALS: dict[str, dict[str, object]] = {
     "enterprise_ai": {
         "keywords": {
             "enterprise": 2.5,
-            "compliance": 2.0,
+            "compliance": 1.5,
             "governance": 3.0,
             "audit": 2.0,
             "audit trails": 3.0,
             "policy engine": 2.5,
             "runtime assurance": 2.5,
-            "security": 1.5,
-            "teams": 1.0,
-            "platform": 1.0,
+            "security": 1.0,
             "defense": 1.5,
         },
         "patterns": [
@@ -133,7 +131,7 @@ SUBTYPE_SIGNALS: dict[str, dict[str, object]] = {
     "startup_studio": {
         "profile": "base",
         "keywords": {
-            "foundry": 3.0,
+            "foundry": 1.5,
             "venture studio": 3.0,
             "startup studio": 3.0,
             "building ai products": 2.0,
@@ -149,15 +147,12 @@ SUBTYPE_SIGNALS: dict[str, dict[str, object]] = {
         "keywords": {
             "petition": 2.5,
             "petitions": 2.5,
-            "community": 2.0,
             "subscriptions": 2.0,
             "supporters": 2.0,
-            "audience": 1.5,
-            "cause": 2.0,
-            "movement": 1.5,
-            "organize": 1.5,
-            "activate": 1.5,
-            "mobilize": 1.5,
+            "membership": 1.5,
+            "fundraising": 1.5,
+            "donor": 1.5,
+            "cause platform": 2.5,
         },
         "patterns": [
             (r"\bconvert your cause into an unstoppable movement\b", 4.0, "Cause-to-movement positioning detected"),
@@ -165,6 +160,96 @@ SUBTYPE_SIGNALS: dict[str, dict[str, object]] = {
             (r"\bno algorithms limiting your reach\b", 3.0, "Anti-algorithm distribution language detected"),
             (r"\bdrive change\b", 2.0, "Change-oriented positioning detected"),
             (r"\borganize, scale and sustain your cause\b", 3.0, "Cause-platform operating model detected"),
+        ],
+    },
+    "llm_framework": {
+        "profile": "base",
+        "keywords": {
+            "open source": 1.0,
+            "framework": 3.0,
+            "llm applications": 2.5,
+            "agent framework": 2.5,
+            "orchestration": 2.0,
+            "developers": 0.5,
+            "sdk": 1.0,
+            "library": 0.5,
+        },
+        "patterns": [
+            (r"\bleading open-source framework\b", 3.0, "Open-source framework positioning detected"),
+            (r"\bbuild (llm|ai) applications\b", 2.5, "Build-applications framework language detected"),
+            (r"\bframework for (llm|ai)\b", 2.5, "Framework-for-LLM language detected"),
+        ],
+    },
+    "agent_tooling": {
+        "profile": "base",
+        "keywords": {
+            "browser": 2.5,
+            "web interaction": 2.5,
+            "web automation": 2.5,
+            "agent tools": 2.5,
+            "validation": 0.8,
+            "engineering": 0.5,
+            "developers": 0.5,
+        },
+        "patterns": [
+            (r"\bai agent(s)? for browsing\b", 3.0, "Agent-browsing language detected"),
+            (r"\bweb agent(s)?\b", 2.5, "Web-agent language detected"),
+            (r"\bhigh-accuracy ai agent\b", 2.5, "High-accuracy agent tooling language detected"),
+            (r"\bengineering validation\b", 2.5, "Engineering-validation language detected"),
+        ],
+    },
+    "workforce_marketplace": {
+        "profile": "base",
+        "keywords": {
+            "marketplace": 3.0,
+            "labor": 2.5,
+            "workforce": 2.5,
+            "staffing": 2.5,
+            "supply chain": 2.0,
+            "industrial": 1.5,
+            "operations": 1.5,
+            "shifts": 2.0,
+            "hourly": 1.5,
+        },
+        "patterns": [
+            (r"\bindustrial .* marketplace\b", 3.0, "Industrial-marketplace language detected"),
+            (r"\bworkforce marketplace\b", 3.0, "Workforce-marketplace language detected"),
+            (r"\bsupply chain marketplace\b", 2.5, "Supply-chain marketplace language detected"),
+        ],
+    },
+    "productivity_addon": {
+        "profile": "base",
+        "keywords": {
+            "excel": 3.0,
+            "spreadsheet": 3.0,
+            "add-on": 2.5,
+            "addin": 2.0,
+            "plugin": 2.0,
+            "document processing": 2.5,
+            "structured data": 2.0,
+            "analysis": 0.5,
+        },
+        "patterns": [
+            (r"\bexcel add-?on\b", 3.0, "Excel add-on language detected"),
+            (r"\bstructured data analysis\b", 2.5, "Structured-data analysis language detected"),
+            (r"\bdocument processing\b", 2.5, "Document-processing language detected"),
+        ],
+    },
+    "engineering_validation": {
+        "profile": "base",
+        "keywords": {
+            "devin": 3.0,
+            "software engineering": 2.5,
+            "engineering validation": 3.0,
+            "code validation": 2.5,
+            "codebase": 1.5,
+            "specialized ai engineering": 2.5,
+            "agent evaluation": 2.0,
+        },
+        "patterns": [
+            (r"\bspecialized ai engineering validation\b", 3.0, "Engineering-validation specialization detected"),
+            (r"\bautonomous software engineering\b", 2.5, "Autonomous software-engineering language detected"),
+            (r"\bdevin\b", 3.0, "Devin product language detected"),
         ],
     },
     "physical_ai_data": {
@@ -290,6 +375,8 @@ def classify_brand_niche(
     dominance = top_score / score_total
     margin = max(top_score - second_score, 0.0)
     confidence = min(0.95, round(0.35 + (dominance * 0.35) + min(margin * 0.06, 0.25), 2))
+    if top_niche != "base" and confidence < 0.6:
+        top_niche = "base"
 
     alternatives = [
         {
