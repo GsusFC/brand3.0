@@ -105,6 +105,8 @@ class PercepcionExtractorTests(unittest.TestCase):
         feature = PercepcionExtractor(llm=llm)._brand_sentiment(exa)
         self.assertLessEqual(feature.value, 35.0)
         self.assertTrue(feature.raw_value["controversy_detected"])
+        self.assertTrue(feature.raw_value["controversy_cap_applied"])
+        self.assertEqual(feature.raw_value["capped_from_score"], 80.0)
         self.assertEqual(feature.raw_value["controversy_details"], "Class action lawsuit filed Q2 2026.")
 
     def test_brand_sentiment_invalid_verdict_falls_back(self):
@@ -139,6 +141,8 @@ class PercepcionExtractorTests(unittest.TestCase):
         feature = PercepcionExtractor(llm=llm)._brand_sentiment(exa)
         self.assertEqual(feature.source, "llm")
         self.assertEqual(len(feature.raw_value["evidence"]), 1)
+        self.assertEqual(feature.confidence, 0.5)
+        self.assertEqual(feature.raw_value["reason"], "llm_partial_evidence")
 
     def test_brand_sentiment_non_bool_controversy_is_treated_as_false_with_warning(self):
         exa = ExaData(brand_name="X", mentions=[

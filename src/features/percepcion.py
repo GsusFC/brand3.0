@@ -70,28 +70,33 @@ _CONSUMER_REVIEW_PLATFORMS = {
 _ALL_REVIEW_PLATFORMS = _PROFESSIONAL_REVIEW_PLATFORMS | _CONSUMER_REVIEW_PLATFORMS
 
 
-def _clean_sentiment_evidence(raw_evidence) -> list[dict]:
+def _clean_sentiment_evidence(raw_evidence) -> tuple[list[dict], bool]:
     if not isinstance(raw_evidence, list):
-        return []
+        return [], raw_evidence is not None
     cleaned: list[dict] = []
+    dropped_any = False
     for item in raw_evidence:
         if not isinstance(item, dict):
+            dropped_any = True
             continue
         quote = item.get("quote")
         url = item.get("source_url")
         signal = item.get("signal")
         if not isinstance(quote, str) or not quote.strip():
+            dropped_any = True
             continue
         if not isinstance(url, str):
+            dropped_any = True
             continue
         if signal not in _VALID_SENTIMENT_SIGNALS:
+            dropped_any = True
             continue
         cleaned.append({
             "quote": quote.strip(),
             "source_url": url,
             "signal": signal,
         })
-    return cleaned
+    return cleaned, dropped_any
 
 
 def _clean_string_list(items, limit: int = 10) -> list[str]:
@@ -213,11 +218,14 @@ class PercepcionExtractor:
                 controversy = False
                 controversy_type_warning = type(controversy_raw).__name__
 
+            original_score = score
             if controversy:
                 score = min(score, _CONTROVERSY_CAP)
 
-            evidence = _clean_sentiment_evidence(result.get("evidence"))
-            partial_evidence = bool(mentions) and not evidence and verdict != "unclear"
+            evidence, dropped_evidence = _clean_sentiment_evidence(result.get("evidence"))
+            partial_evidence = bool(mentions) and (
+                dropped_evidence or (not evidence and verdict != "unclear")
+            )
             confidence = 0.5 if (verdict == "unclear" or partial_evidence) else 0.85
 
             raw_payload: dict = {
@@ -228,8 +236,11 @@ class PercepcionExtractor:
                 "evidence": evidence[:4],
                 "controversy_detected": controversy,
                 "controversy_details": (result.get("controversy_details") or None) if controversy else None,
+                "controversy_cap_applied": controversy and score < original_score,
                 "reasoning": (result.get("reasoning") or "")[:500],
             }
+            if raw_payload["controversy_cap_applied"]:
+                raw_payload["capped_from_score"] = round(original_score, 1)
             if controversy_type_warning:
                 raw_payload["controversy_detected_type_warning"] = controversy_type_warning
             if partial_evidence:
