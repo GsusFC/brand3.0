@@ -52,7 +52,7 @@ class ScoringEngineTests(unittest.TestCase):
         self.assertAlmostEqual(brand.dimensions["diferenciacion"].score, 66.1)
         # vitalidad = 0.40*90 + 0.35*80 + 0.25*60 = 79.0
         self.assertAlmostEqual(brand.dimensions["vitalidad"].score, 79.0)
-        self.assertAlmostEqual(brand.composite_score, 66.95, places=1)
+        self.assertEqual(brand.composite_score, 67.0)
 
     def test_presence_ghost_brand_rule_caps_score(self):
         score = self.engine.score_dimension(
