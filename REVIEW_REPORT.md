@@ -74,3 +74,57 @@ Suite completa ejecutada tras el fix. Archivos focales (`test_feature_extractors
 **Branch:** `refactor/presencia`
 **Último commit:** `5eef1b9`
 **Base:** `main` (Vitalidad ya en main)
+
+# Review report — Dimensión Coherencia
+
+## Resumen ejecutivo
+
+- **Decisión**: APPROVE
+- **Fixes aplicados**: 1
+- **Bloqueantes**: 0
+- **Advertencias**: 2
+
+## Fixes aplicados
+
+- `1192e68` — degradé `confidence` en `tone_consistency` cuando `examples` llega con shape malformada y se filtra por completo ([src/features/coherencia.py](/Users/gsus/Antigravity/Brand3/brand3/src/features/coherencia.py:90), [src/features/coherencia.py](/Users/gsus/Antigravity/Brand3/brand3/src/features/coherencia.py:434)). Antes solo degradaba si `gap_signal != "none"`, así que una respuesta LLM con evidencia rota podía quedar con `confidence=0.85`.
+
+## Bloqueantes restantes
+
+Ninguno.
+
+## Advertencias
+
+### A1. El prompt original no está en el repo, así que el cumplimiento literal no puede verificarse al 100%
+
+No encontré `brand3-coherencia-implement-claudecode.md` ni variantes cercanas en el workspace. Pude verificar el estado final del código contra los requisitos listados en tu brief actual, pero no cerrar una auditoría línea por línea contra el prompt original del implementador.
+
+### A2. La cobertura de tests de Coherencia aún deja huecos en contratos LLM negativos
+
+Los tests cubren bien `messaging_consistency` con `verdict` inválido y `gaps` malformados, pero no encontré un test explícito para:
+- `messaging_consistency` con `verdict="unclear"`
+- `tone_consistency` con `gap_signal` inválido
+- `tone_consistency` con `examples` no-lista o items malformados
+
+No es bloqueante porque el código ahora maneja parte de ese path, pero sigue siendo un hueco de regresión.
+
+## Tests
+
+- `PYTHONPATH=. ./.venv/bin/pytest -v` → **132 passed**
+- `PYTHONPATH=. ./.venv/bin/pytest tests/test_feature_extractors.py tests/test_scoring_engine.py -v` → **75 passed**
+
+Verificación focal de Coherencia:
+- `dimensions.py` declara exactamente `visual_consistency`, `messaging_consistency`, `tone_consistency`, `cross_channel_coherence` con pesos `0.25 / 0.40 / 0.20 / 0.15`.
+- `raw_value` de las 4 features sale como dict nativo en [src/features/coherencia.py](/Users/gsus/Antigravity/Brand3/brand3/src/features/coherencia.py).
+- `coherencia_llm.py` no existe.
+- `CoherenciaExtractor` acepta `llm`, `visual_analyzer`, `skip_visual_analysis`.
+- `brand_service.py` instancia `CoherenciaExtractor(llm=llm, skip_visual_analysis=skip_visual_analysis)`.
+- `LLMAnalyzer` conserva `analyze_coherence` y añade `analyze_messaging_consistency` y `analyze_tone_consistency`.
+- `test_weighted_average_and_composite_score` está matemáticamente correcto:
+  `coherencia = 0.25*80 + 0.40*60 + 0.20*70 + 0.15*50 = 65.5`
+  y el composite `69.2` también cuadra con los pesos de dimensión actuales.
+
+## Notas cualitativas
+
+- `messaging_consistency` preserva evidencia útil para conversación comercial: `self_category`, `third_party_category`, `aligned_themes`, `gaps`, `reasoning`.
+- `tone_consistency` conserva citas literales en `examples`, pero el contrato usa `gap_signal` en vez de `verdict`. Como el prompt original no está disponible, lo dejo como observación y no como fallo literal.
+- Los fallbacks heurísticos de Coherencia devuelven razones y señales accionables; no son solo scores neutrales mudos.
