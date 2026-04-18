@@ -603,11 +603,11 @@ class VitalidadExtractorTests(unittest.TestCase):
         features = extractor.extract(exa=self._exa_with_dates([10]))
         fv = features["momentum"]
         self.assertEqual(fv.source, "llm")
-        self.assertEqual(fv.confidence, 0.85)  # evidence survives → full confidence
+        self.assertEqual(fv.confidence, 0.5)
         payload = json.loads(fv.raw_value)
         self.assertEqual(len(payload["evidence"]), 1)
         self.assertEqual(payload["evidence"][0]["quote"], "hired 40 engineers")
-        self.assertNotIn("reason", payload)  # no partial flag when evidence remains
+        self.assertEqual(payload["reason"], "llm_partial_evidence")
 
     def test_momentum_with_all_evidence_items_malformed_flags_partial(self):
         import json

@@ -32,7 +32,7 @@ _VALID_VERDICTS = frozenset({"building", "maintaining", "declining", "unclear"})
 _VALID_SIGNALS = frozenset({"positive", "negative", "neutral"})
 
 
-def _clean_momentum_evidence(raw_evidence) -> list[dict]:
+def _clean_momentum_evidence(raw_evidence) -> tuple[list[dict], bool]:
     """Filter LLM evidence items down to the ones that match the contract.
 
     Each valid item must be a dict with:
@@ -42,20 +42,24 @@ def _clean_momentum_evidence(raw_evidence) -> list[dict]:
     Malformed items are dropped silently.
     """
     if not isinstance(raw_evidence, list):
-        return []
+        return [], True
     cleaned = []
+    dropped_any = False
     for item in raw_evidence:
         if not isinstance(item, dict):
+            dropped_any = True
             continue
         quote = item.get("quote")
         source_url = item.get("source_url")
         signal = item.get("signal")
         if not isinstance(quote, str) or not isinstance(source_url, str):
+            dropped_any = True
             continue
         if signal not in _VALID_SIGNALS:
+            dropped_any = True
             continue
         cleaned.append({"quote": quote, "source_url": source_url, "signal": signal})
-    return cleaned
+    return cleaned, dropped_any
 
 
 def _parse_exa_date(raw: str) -> datetime | None:
@@ -295,8 +299,8 @@ class VitalidadExtractor:
             )
 
         score = max(0.0, min(score, 100.0))
-        evidence = _clean_momentum_evidence(result.get("evidence"))
-        partial_evidence = not evidence
+        evidence, dropped_any_evidence = _clean_momentum_evidence(result.get("evidence"))
+        partial_evidence = dropped_any_evidence or not evidence
 
         # confidence: 0.85 en verdict claro con evidencia; 0.5 si verdict
         # es "unclear" o si se filtró toda la evidencia por malformada.
