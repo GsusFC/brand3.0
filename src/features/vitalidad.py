@@ -28,6 +28,35 @@ from .llm_analyzer import LLMAnalyzer
 
 _DATE_FORMATS = ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%B %d, %Y")
 
+_VALID_VERDICTS = frozenset({"building", "maintaining", "declining", "unclear"})
+_VALID_SIGNALS = frozenset({"positive", "negative", "neutral"})
+
+
+def _clean_momentum_evidence(raw_evidence) -> list[dict]:
+    """Filter LLM evidence items down to the ones that match the contract.
+
+    Each valid item must be a dict with:
+      - quote: str
+      - source_url: str
+      - signal: str in {"positive", "negative", "neutral"}
+    Malformed items are dropped silently.
+    """
+    if not isinstance(raw_evidence, list):
+        return []
+    cleaned = []
+    for item in raw_evidence:
+        if not isinstance(item, dict):
+            continue
+        quote = item.get("quote")
+        source_url = item.get("source_url")
+        signal = item.get("signal")
+        if not isinstance(quote, str) or not isinstance(source_url, str):
+            continue
+        if signal not in _VALID_SIGNALS:
+            continue
+        cleaned.append({"quote": quote, "source_url": source_url, "signal": signal})
+    return cleaned
+
 
 def _parse_exa_date(raw: str) -> datetime | None:
     if not raw or raw == "None":
@@ -252,14 +281,36 @@ class VitalidadExtractor:
                 "momentum", 50.0,
                 raw_value=raw, confidence=0.3, source="heuristic_fallback",
             )
-        score = max(0.0, min(score, 100.0))
-        confidence = 0.5 if verdict == "unclear" else 0.85
 
-        raw = json.dumps({
+        # REVIEW: verdict fuera del enum invalida la respuesta entera.
+        # Sin un juicio válido el score carece de interpretación.
+        if verdict not in _VALID_VERDICTS:
+            raw = json.dumps({
+                "reason": "llm_invalid_verdict",
+                "got": str(verdict)[:50],
+            })
+            return FeatureValue(
+                "momentum", 50.0,
+                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+            )
+
+        score = max(0.0, min(score, 100.0))
+        evidence = _clean_momentum_evidence(result.get("evidence"))
+        partial_evidence = not evidence
+
+        # confidence: 0.85 en verdict claro con evidencia; 0.5 si verdict
+        # es "unclear" o si se filtró toda la evidencia por malformada.
+        confidence = 0.5 if (verdict == "unclear" or partial_evidence) else 0.85
+
+        raw_payload = {
             "verdict": verdict,
             "reasoning": (result.get("reasoning") or "")[:500],
-            "evidence": (result.get("evidence") or [])[:3],
-        })
+            "evidence": evidence[:3],
+        }
+        if partial_evidence:
+            raw_payload["reason"] = "llm_partial_evidence"
+        raw = json.dumps(raw_payload)
+
         return FeatureValue(
             "momentum", score,
             raw_value=raw, confidence=confidence, source="llm",

@@ -520,6 +520,117 @@ class VitalidadExtractorTests(unittest.TestCase):
             {"content_recency", "publication_cadence", "momentum"},
         )
 
+    # ── momentum — LLM contract negative tests ─────────────────────────
+
+    def _make_momentum_llm(self, payload):
+        """Helper: fake LLMAnalyzer that returns a fixed payload from analyze_momentum."""
+
+        class FakeLLM:
+            api_key = "sk-test"
+
+            def analyze_momentum(self, mentions, brand_name):
+                return payload
+
+        return FakeLLM()
+
+    def test_momentum_with_invalid_verdict_falls_back(self):
+        import json
+
+        llm = self._make_momentum_llm({
+            "momentum_score": 80,
+            "verdict": "thriving",  # not in the enum
+            "evidence": [
+                {
+                    "quote": "shipped v2",
+                    "source_url": "https://example.com/article-0",
+                    "signal": "positive",
+                }
+            ],
+            "reasoning": "Good stuff.",
+        })
+        extractor = VitalidadExtractor(llm=llm)
+        features = extractor.extract(exa=self._exa_with_dates([10]))
+        fv = features["momentum"]
+        self.assertEqual(fv.source, "heuristic_fallback")
+        self.assertEqual(fv.value, 50.0)
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(payload["reason"], "llm_invalid_verdict")
+        self.assertEqual(payload["got"], "thriving")
+
+    def test_momentum_with_non_list_evidence_degrades_confidence(self):
+        import json
+
+        llm = self._make_momentum_llm({
+            "momentum_score": 72,
+            "verdict": "building",
+            "evidence": "they shipped a lot",  # should be list
+            "reasoning": "Clearly active.",
+        })
+        extractor = VitalidadExtractor(llm=llm)
+        features = extractor.extract(exa=self._exa_with_dates([10]))
+        fv = features["momentum"]
+        # Still source=llm because verdict is valid, but degraded confidence.
+        self.assertEqual(fv.source, "llm")
+        self.assertEqual(fv.value, 72.0)
+        self.assertEqual(fv.confidence, 0.5)
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(payload["reason"], "llm_partial_evidence")
+        self.assertEqual(payload["evidence"], [])
+
+    def test_momentum_with_malformed_evidence_items_are_filtered(self):
+        import json
+
+        llm = self._make_momentum_llm({
+            "momentum_score": 82,
+            "verdict": "building",
+            "evidence": [
+                # Missing signal → dropped.
+                {"quote": "launched new runtime", "source_url": "https://x.com/1"},
+                # Wrong signal value → dropped.
+                {"quote": "grew 3x", "source_url": "https://x.com/2", "signal": "bullish"},
+                # Non-str quote → dropped.
+                {"quote": 123, "source_url": "https://x.com/3", "signal": "positive"},
+                # Valid → kept.
+                {"quote": "hired 40 engineers",
+                 "source_url": "https://x.com/4",
+                 "signal": "positive"},
+                # Non-dict → dropped.
+                "random string",
+            ],
+            "reasoning": "Mix.",
+        })
+        extractor = VitalidadExtractor(llm=llm)
+        features = extractor.extract(exa=self._exa_with_dates([10]))
+        fv = features["momentum"]
+        self.assertEqual(fv.source, "llm")
+        self.assertEqual(fv.confidence, 0.85)  # evidence survives → full confidence
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(len(payload["evidence"]), 1)
+        self.assertEqual(payload["evidence"][0]["quote"], "hired 40 engineers")
+        self.assertNotIn("reason", payload)  # no partial flag when evidence remains
+
+    def test_momentum_with_all_evidence_items_malformed_flags_partial(self):
+        import json
+
+        llm = self._make_momentum_llm({
+            "momentum_score": 64,
+            "verdict": "maintaining",
+            "evidence": [
+                {"quote": "something"},  # missing fields → dropped
+                "not a dict",
+            ],
+            "reasoning": "Little signal.",
+        })
+        extractor = VitalidadExtractor(llm=llm)
+        features = extractor.extract(exa=self._exa_with_dates([10]))
+        fv = features["momentum"]
+        self.assertEqual(fv.source, "llm")
+        self.assertEqual(fv.value, 64.0)
+        self.assertEqual(fv.confidence, 0.5)
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(payload["reason"], "llm_partial_evidence")
+        self.assertEqual(payload["evidence"], [])
+
 
 class WebCollectorTests(unittest.TestCase):
     def test_clean_markdown_removes_cookie_banner_noise(self):

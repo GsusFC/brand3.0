@@ -126,3 +126,83 @@ Ninguno en este suite. El entorno usa pytest 9.0.3 sobre Python 3.11.8.
 - `ScoringEngine`, `niche/profiles.py`, `learning/`, `versioning`, `SQLiteStore`: intactos.
 - `LLMAnalyzer` solo extendido con un método público nuevo; nada renombrado ni eliminado.
 - No hay cambios en el modelo `FeatureValue`.
+
+---
+
+## Round 2 — respuesta al review de Codex
+
+**Contexto.** Codex revisó el refactor, aterrizó dos fixes defensivos
+directamente (`890b564` guard invalid `momentum_score`, `f8339bc`
+composite score tight assert) y pidió dos cosas más antes del merge:
+validación estricta del shape del LLM y tests negativos.
+
+### Cambios — validación del contrato del LLM
+
+Archivo: [src/features/vitalidad.py](src/features/vitalidad.py).
+
+1. **`verdict` fuera del enum** → fallback heurístico completo
+   (`source="heuristic_fallback"`, `value=50`, `confidence=0.3`,
+   `raw_value.reason="llm_invalid_verdict"`). Razón: sin un juicio
+   interpretable, el `momentum_score` no es confiable aunque sea un
+   número válido. Enum permitido: `{building, maintaining, declining, unclear}`.
+
+2. **`evidence` con shape inválido** → dos caminos:
+   - Cada item de la lista se filtra con `_clean_momentum_evidence()`:
+     debe ser dict con `quote: str`, `source_url: str`, `signal` en
+     `{positive, negative, neutral}`. Items malformados se descartan en silencio.
+   - Si `evidence` no es lista, se trata como vacía.
+   - Si tras filtrar queda vacía (o entró vacía), el resultado sigue siendo
+     `source="llm"` con el score del LLM, pero con `confidence=0.5`
+     (degradada) y `raw_value.reason="llm_partial_evidence"`.
+     El usuario ve un verdict pero sin respaldo literal.
+
+Nuevos constantes en el módulo: `_VALID_VERDICTS`, `_VALID_SIGNALS`.
+Nueva helper pura: `_clean_momentum_evidence(raw)` — testeable por separado
+si en el futuro se quiere.
+
+### Tests negativos añadidos
+
+Archivo: [tests/test_feature_extractors.py](tests/test_feature_extractors.py). +4 tests en `VitalidadExtractorTests`:
+
+- `test_momentum_with_invalid_verdict_falls_back` — verdict = `"thriving"` →
+  fallback con `reason="llm_invalid_verdict"`, `got="thriving"`.
+- `test_momentum_with_non_list_evidence_degrades_confidence` — `evidence`
+  como string → `source="llm"`, `confidence=0.5`, `reason="llm_partial_evidence"`,
+  `evidence=[]` en raw.
+- `test_momentum_with_malformed_evidence_items_are_filtered` — lista mixta
+  (falta signal, signal inválido, quote no-str, item válido, string suelto)
+  → solo sobrevive el item válido; `confidence=0.85`, sin flag de partial.
+- `test_momentum_with_all_evidence_items_malformed_flags_partial` — lista
+  de items todos inválidos → `confidence=0.5`, `reason="llm_partial_evidence"`.
+
+Helper de test añadido: `_make_momentum_llm(payload)` para reducir boilerplate
+en los 4 tests nuevos.
+
+### Resultado
+
+```
+113 passed in 1.56s
+```
+
+(109 anteriores + 4 nuevos, 0 regresiones.)
+
+### Decisiones de round 2
+
+**D7. Verdict inválido = fallback total, evidence inválida = degradación parcial.**
+
+La asimetría es deliberada:
+- Verdict inválido significa que el LLM no cumplió la tarea (no devolvió un
+  juicio interpretable); no se puede confiar en nada de la respuesta.
+- Evidence inválida significa que el juicio existe pero no podemos mostrar
+  las citas; el score todavía es un dato útil, solo bajamos la confianza.
+
+Si el revisor prefiere tratar ambos casos como fallback total, el cambio es
+una línea: sustituir la lógica del `partial_evidence` por un `return` al
+fallback. Queda flaggeado con `# REVIEW:` en la línea del check de verdict.
+
+**D8. Helper `_clean_momentum_evidence` como función del módulo, no método.**
+
+Se implementó como función pura fuera de la clase para que sea fácilmente
+testeable de forma aislada si un futuro bug requiere cobertura más fina.
+No tiene estado. El naming arranca con `_` para señalar privado al módulo.
+
