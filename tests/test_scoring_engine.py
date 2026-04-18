@@ -123,8 +123,7 @@ class ScoringEngineTests(unittest.TestCase):
                 "web_presence": FeatureValue("web_presence", 75.0),
                 "social_footprint": FeatureValue("social_footprint", 25.0),
                 "search_visibility": FeatureValue("search_visibility", 60.0),
-                "ai_visibility": FeatureValue("ai_visibility", 55.0),
-                "directory_listings": FeatureValue("directory_listings", 20.0),
+                "directory_presence": FeatureValue("directory_presence", 20.0),
             },
             "percepcion": {
                 "sentiment_score": FeatureValue("sentiment_score", 58.0),
