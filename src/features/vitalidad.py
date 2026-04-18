@@ -17,7 +17,6 @@ Unified single-file design: heuristic features + LLM feature live together.
 `momentum` feature returns a neutral fallback and the other two features still work.
 """
 
-import json
 import statistics
 from datetime import datetime, timezone
 from ..models.brand import FeatureValue
@@ -113,15 +112,15 @@ class VitalidadExtractor:
     def _content_recency(self, dated: list[tuple[datetime, str, str]]) -> FeatureValue:
         """Days since most recent publication. Scale tuned for brand audits."""
         if not dated:
-            raw = json.dumps({
-                "most_recent_date": None,
-                "days_ago": None,
-                "evidence_url": None,
-                "reason": "no_dates_found",
-            })
             return FeatureValue(
                 "content_recency", 30.0,
-                raw_value=raw, confidence=0.3, source="none",
+                raw_value={
+                    "most_recent_date": None,
+                    "days_ago": None,
+                    "evidence_url": None,
+                    "reason": "no_dates_found",
+                },
+                confidence=0.3, source="none",
             )
 
         most_recent_date, most_recent_url, _ = max(dated, key=lambda t: t[0])
@@ -140,14 +139,14 @@ class VitalidadExtractor:
         else:
             score = 10.0
 
-        raw = json.dumps({
-            "most_recent_date": most_recent_date.strftime("%Y-%m-%d"),
-            "days_ago": days_ago,
-            "evidence_url": most_recent_url or None,
-        })
         return FeatureValue(
             "content_recency", score,
-            raw_value=raw, confidence=0.7, source="exa",
+            raw_value={
+                "most_recent_date": most_recent_date.strftime("%Y-%m-%d"),
+                "days_ago": days_ago,
+                "evidence_url": most_recent_url or None,
+            },
+            confidence=0.7, source="exa",
         )
 
     # ── publication_cadence ────────────────────────────────────────────
@@ -163,16 +162,16 @@ class VitalidadExtractor:
         ]
 
         if len(recent) < 2:
-            raw = json.dumps({
-                "dates_found": len(recent),
-                "mean_gap_days": None,
-                "gap_stddev_days": None,
-                "evidence": evidence,
-                "reason": "insufficient_dates_12m",
-            })
             return FeatureValue(
                 "publication_cadence", 20.0,
-                raw_value=raw, confidence=0.4, source="exa",
+                raw_value={
+                    "dates_found": len(recent),
+                    "mean_gap_days": None,
+                    "gap_stddev_days": None,
+                    "evidence": evidence,
+                    "reason": "insufficient_dates_12m",
+                },
+                confidence=0.4, source="exa",
             )
 
         gaps = [
@@ -200,15 +199,15 @@ class VitalidadExtractor:
                 score += (1 - ratio) * 10 - ratio * 20
             score = max(40.0, min(score, 95.0))
 
-        raw = json.dumps({
-            "dates_found": len(recent),
-            "mean_gap_days": round(mean_gap, 1),
-            "gap_stddev_days": round(gap_stddev, 1),
-            "evidence": evidence,
-        })
         return FeatureValue(
             "publication_cadence", round(score, 1),
-            raw_value=raw, confidence=0.7, source="exa",
+            raw_value={
+                "dates_found": len(recent),
+                "mean_gap_days": round(mean_gap, 1),
+                "gap_stddev_days": round(gap_stddev, 1),
+                "evidence": evidence,
+            },
+            confidence=0.7, source="exa",
         )
 
     # ── momentum (LLM) ─────────────────────────────────────────────────
@@ -220,13 +219,13 @@ class VitalidadExtractor:
     ) -> FeatureValue:
         """LLM verdict with literal quotes from last ~6 months of mentions."""
         if self.llm is None or not getattr(self.llm, "api_key", None):
-            raw = json.dumps({
-                "reason": "llm_unavailable",
-                "note": "Requires LLMAnalyzer with api_key to compute momentum.",
-            })
             return FeatureValue(
                 "momentum", 50.0,
-                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+                raw_value={
+                    "reason": "llm_unavailable",
+                    "note": "Requires LLMAnalyzer with api_key to compute momentum.",
+                },
+                confidence=0.3, source="heuristic_fallback",
             )
 
         cutoff = datetime.now() - _days(180)
@@ -241,61 +240,58 @@ class VitalidadExtractor:
         ]
 
         if not recent:
-            raw = json.dumps({
-                "reason": "no_recent_mentions_6m",
-                "note": "No dated mentions in the last 6 months to analyse.",
-            })
             return FeatureValue(
                 "momentum", 50.0,
-                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+                raw_value={
+                    "reason": "no_recent_mentions_6m",
+                    "note": "No dated mentions in the last 6 months to analyse.",
+                },
+                confidence=0.3, source="heuristic_fallback",
             )
 
         brand_name = getattr(exa, "brand_name", "") if exa else ""
         try:
             result = self.llm.analyze_momentum(recent, brand_name)
         except Exception as exc:  # defensive: any LLM error → fallback
-            raw = json.dumps({
-                "reason": "llm_error",
-                "error": str(exc)[:200],
-            })
             return FeatureValue(
                 "momentum", 50.0,
-                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+                raw_value={"reason": "llm_error", "error": str(exc)[:200]},
+                confidence=0.3, source="heuristic_fallback",
             )
 
         if not isinstance(result, dict) or "momentum_score" not in result:
-            raw = json.dumps({
-                "reason": "llm_invalid_response",
-                "got": type(result).__name__,
-            })
             return FeatureValue(
                 "momentum", 50.0,
-                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+                raw_value={
+                    "reason": "llm_invalid_response",
+                    "got": type(result).__name__,
+                },
+                confidence=0.3, source="heuristic_fallback",
             )
 
         verdict = result.get("verdict", "unclear")
         try:
             score = float(result.get("momentum_score", 50))
         except (TypeError, ValueError):
-            raw = json.dumps({
-                "reason": "llm_invalid_response",
-                "got": type(result.get("momentum_score")).__name__,
-            })
             return FeatureValue(
                 "momentum", 50.0,
-                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+                raw_value={
+                    "reason": "llm_invalid_response",
+                    "got": type(result.get("momentum_score")).__name__,
+                },
+                confidence=0.3, source="heuristic_fallback",
             )
 
         # REVIEW: verdict fuera del enum invalida la respuesta entera.
         # Sin un juicio válido el score carece de interpretación.
         if verdict not in _VALID_VERDICTS:
-            raw = json.dumps({
-                "reason": "llm_invalid_verdict",
-                "got": str(verdict)[:50],
-            })
             return FeatureValue(
                 "momentum", 50.0,
-                raw_value=raw, confidence=0.3, source="heuristic_fallback",
+                raw_value={
+                    "reason": "llm_invalid_verdict",
+                    "got": str(verdict)[:50],
+                },
+                confidence=0.3, source="heuristic_fallback",
             )
 
         score = max(0.0, min(score, 100.0))
@@ -306,18 +302,17 @@ class VitalidadExtractor:
         # es "unclear" o si se filtró toda la evidencia por malformada.
         confidence = 0.5 if (verdict == "unclear" or partial_evidence) else 0.85
 
-        raw_payload = {
+        raw_payload: dict = {
             "verdict": verdict,
             "reasoning": (result.get("reasoning") or "")[:500],
             "evidence": evidence[:3],
         }
         if partial_evidence:
             raw_payload["reason"] = "llm_partial_evidence"
-        raw = json.dumps(raw_payload)
 
         return FeatureValue(
             "momentum", score,
-            raw_value=raw, confidence=confidence, source="llm",
+            raw_value=raw_payload, confidence=confidence, source="llm",
         )
 
 

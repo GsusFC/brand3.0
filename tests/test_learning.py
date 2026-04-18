@@ -37,8 +37,8 @@ class LearningTests(unittest.TestCase):
                 run_id,
                 {
                     "diferenciacion": {
-                        "generic_language_score": __import__("src.models.brand", fromlist=["FeatureValue"]).FeatureValue(
-                            "generic_language_score", 88.0, confidence=0.4, source="web_scrape"
+                        "uniqueness": __import__("src.models.brand", fromlist=["FeatureValue"]).FeatureValue(
+                            "uniqueness", 10.0, confidence=0.4, source="web_scrape"
                         )
                     }
                 },
@@ -47,7 +47,7 @@ class LearningTests(unittest.TestCase):
             store.add_annotation(
                 run_id=run_id,
                 dimension_name="diferenciacion",
-                feature_name="generic_language_score",
+                feature_name="uniqueness",
                 expected_score=55.0,
                 actual_score=25.0,
                 note="Demasiado castigada para una marca con lenguaje propio",
@@ -80,7 +80,7 @@ class LearningTests(unittest.TestCase):
             "annotations": [
                 {
                     "dimension_name": "diferenciacion",
-                    "feature_name": "generic_language_score",
+                    "feature_name": "uniqueness",
                     "expected_score": 60.0,
                     "actual_score": 25.0,
                 }
@@ -122,7 +122,7 @@ class LearningTests(unittest.TestCase):
             engine_path = Path(tmpdir) / "engine.py"
             dimensions_path.write_text('DIMENSIONS = {}\n', encoding="utf-8")
             engine_path.write_text(
-                'ScoringRule(condition="lenguaje_generico", check=lambda f: f.get("generic_language_score", FeatureValue("", 0)).value > 80, cap=25, insight="x")\n',
+                'ScoringRule(condition="lenguaje_generico", check=lambda f: f.get("uniqueness", FeatureValue("", 100)).value < (100 - 80), cap=25, insight="x")\n',
                 encoding="utf-8",
             )
             result = apply_candidate(
@@ -136,7 +136,7 @@ class LearningTests(unittest.TestCase):
             )
             updated = engine_path.read_text(encoding="utf-8")
             self.assertTrue(result["applied"])
-            self.assertIn('.value > 85', updated)
+            self.assertIn('.value < (100 - 85)', updated)
 
     def test_candidate_status_can_be_updated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -164,7 +164,7 @@ class LearningTests(unittest.TestCase):
                 encoding="utf-8",
             )
             engine_path.write_text(
-                'ScoringRule(condition="lenguaje_generico", check=lambda f: f.get("generic_language_score", FeatureValue("", 0)).value > 80, cap=25, insight="x")\n',
+                'ScoringRule(condition="lenguaje_generico", check=lambda f: f.get("uniqueness", FeatureValue("", 100)).value < (100 - 80), cap=25, insight="x")\n',
                 encoding="utf-8",
             )
 

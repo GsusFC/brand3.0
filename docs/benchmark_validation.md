@@ -111,9 +111,9 @@ porque `Sprint A` afecta sobre todo a esas zonas y a reglas de coherencia/presen
 Cambios esperables:
 
 - `sentiment_trend` más estable o neutral cuando faltan fechas
-- `generic_language_score` menos agresivo en webs largas
+- `uniqueness` menos agresivo en webs largas (normalización por longitud)
 - `coherencia` puede bajar en marcas con un solo canal realmente activo
-- `ai_visibility` debería inflarse menos por simple cantidad
+- `search_visibility` debería inflarse menos por simple cantidad
 
 No esperable:
 

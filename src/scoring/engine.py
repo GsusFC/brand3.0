@@ -113,6 +113,8 @@ class ScoringEngine:
                 ),
             ],
             "diferenciacion": [
+                # Nota: rule conserva nombre histórico pero ahora chequea `uniqueness`
+                # (low uniqueness = lenguaje genérico). Ver diferenciacion.py.
                 ScoringRule(
                     condition="lenguaje_generico",
                     check=lambda f, threshold=float(generic.get("threshold", 80)): (
