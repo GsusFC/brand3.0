@@ -36,8 +36,9 @@ def apply_rule_threshold(engine_path: str, target: str, proposed_threshold: floa
     if target != "diferenciacion.lenguaje_generico":
         raise CandidateApplyError(f"Unsupported rule threshold target: {target}")
 
+    # Post-refactor: the rule now chequea `uniqueness` (low = generic).
     pattern = re.compile(
-        r'(condition="lenguaje_generico",.*?generic_language_score", FeatureValue\("", 0\)\)\.value > )([0-9.]+)',
+        r'(condition="lenguaje_generico",.*?uniqueness", FeatureValue\("", 100\)\)\.value < \(100 - )([0-9.]+)',
         re.DOTALL,
     )
 

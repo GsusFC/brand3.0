@@ -2,6 +2,28 @@
 
 Fecha: 2026-04-13
 
+## Estado tras refactor (abril 2026)
+
+Las 5 dimensiones fueron refactorizadas en abril 2026. Las features
+problemáticas documentadas abajo fueron eliminadas o reemplazadas:
+
+- `generic_language_score` → reemplazado por `uniqueness` (LLM-first con fallback normalizado por longitud).
+- `tech_modernity` → eliminado. No medía vitalidad.
+- `ai_visibility` → absorbido en `search_visibility`.
+- `content_frequency` → reemplazado por `publication_cadence`.
+- `growth_signals` + `evolution_signs` → absorbidos en `momentum` (LLM).
+- `sentiment_score` + `controversy_flag` → consolidados en `brand_sentiment` (LLM con cap interno).
+- `unique_value_prop` → reemplazado por `positioning_clarity` (LLM).
+- `brand_vocabulary` → absorbido en `uniqueness`.
+- `directory_listings` → renombrado a `directory_presence` con tiers.
+- `tone_consistency` → rediseñado como LLM-driven.
+- `messaging_consistency` → rediseñado como LLM-driven (antes wrapper parcial).
+
+El resto de este documento es referencia histórica del estado
+pre-refactor. Los hallazgos marcados como bugs están ahora resueltos;
+los marcados como decisiones de modelo (composite lineal, etc.) siguen
+vigentes como discusión futura.
+
 ## Objetivo
 
 Dejar una revisión útil del motor de scoring actual:

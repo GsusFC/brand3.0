@@ -130,17 +130,22 @@ class CalibrationAnalyzer:
         return recommendations
 
     def _detect_generic_rule_pressure(self, snapshot: dict[str, Any]) -> list[CalibrationRecommendation]:
+        # The `lenguaje_generico` rule now reads `uniqueness` (opción B del
+        # refactor de Diferenciación). Low uniqueness = generic language.
         recs = []
         feature_rows = snapshot.get("features", [])
-        generic_scores = [row["value"] for row in feature_rows if row["feature_name"] == "generic_language_score"]
-        if generic_scores and max(generic_scores) > 80:
+        uniqueness_scores = [
+            row["value"] for row in feature_rows
+            if row["feature_name"] == "uniqueness"
+        ]
+        if uniqueness_scores and min(uniqueness_scores) < 20:
             recs.append(
                 CalibrationRecommendation(
                     scope="rule",
                     target="diferenciacion.lenguaje_generico",
                     severity="medium",
-                    message="The generic language cap fired or is close to firing. Validate if the threshold is too aggressive.",
-                    evidence={"generic_language_score_max": max(generic_scores)},
+                    message="Uniqueness dropped near the generic language cap threshold. Validate if the threshold is too aggressive.",
+                    evidence={"uniqueness_min": min(uniqueness_scores)},
                 )
             )
         return recs
@@ -188,9 +193,11 @@ class CalibrationAnalyzer:
                     )
                 )
 
+        # Post-refactor: `generic_language_score` was replaced by `uniqueness`
+        # (inverted semantics: low uniqueness = generic).
         generic_annotations = [
             item for item in annotations
-            if item.get("feature_name") == "generic_language_score"
+            if item.get("feature_name") == "uniqueness"
             and item.get("expected_score") is not None
             and item.get("actual_score") is not None
             and (item["expected_score"] - item["actual_score"]) >= 15

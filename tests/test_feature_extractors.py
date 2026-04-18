@@ -879,7 +879,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         fv = features["content_recency"]
         self.assertEqual(fv.value, 30.0)
         self.assertEqual(fv.source, "none")
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertIsNone(payload["most_recent_date"])
         self.assertIsNone(payload["days_ago"])
         self.assertIsNone(payload["evidence_url"])
@@ -893,7 +893,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         features = self.extractor.extract(exa=exa)
         fv = features["publication_cadence"]
         self.assertEqual(fv.value, 20.0)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(payload["reason"], "insufficient_dates_12m")
 
     def test_publication_cadence_regular_rhythm_scores_high(self):
@@ -918,7 +918,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         self.assertEqual(fv.value, 50.0)
         self.assertEqual(fv.source, "heuristic_fallback")
         self.assertEqual(fv.confidence, 0.3)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(payload["reason"], "llm_unavailable")
 
     def test_momentum_with_llm_uses_structured_verdict(self):
@@ -949,7 +949,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         self.assertEqual(fv.value, 82.0)
         self.assertEqual(fv.source, "llm")
         self.assertEqual(fv.confidence, 0.85)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(payload["verdict"], "building")
         self.assertEqual(len(payload["evidence"]), 1)
         self.assertIn("shipped a new inference runtime", payload["evidence"][0]["quote"])
@@ -973,7 +973,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         features = extractor.extract(exa=exa)
         fv = features["momentum"]
         self.assertEqual(fv.confidence, 0.5)
-        self.assertEqual(json.loads(fv.raw_value)["verdict"], "unclear")
+        self.assertEqual(fv.raw_value["verdict"], "unclear")
 
     def test_momentum_with_no_recent_mentions_returns_fallback(self):
         import json
@@ -990,7 +990,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         features = extractor.extract(exa=exa)
         fv = features["momentum"]
         self.assertEqual(fv.source, "heuristic_fallback")
-        self.assertEqual(json.loads(fv.raw_value)["reason"], "no_recent_mentions_6m")
+        self.assertEqual(fv.raw_value["reason"], "no_recent_mentions_6m")
 
     def test_extract_always_returns_three_features(self):
         features = self.extractor.extract(web=None, exa=None)
@@ -1032,7 +1032,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         fv = features["momentum"]
         self.assertEqual(fv.source, "heuristic_fallback")
         self.assertEqual(fv.value, 50.0)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(payload["reason"], "llm_invalid_verdict")
         self.assertEqual(payload["got"], "thriving")
 
@@ -1052,7 +1052,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         self.assertEqual(fv.source, "llm")
         self.assertEqual(fv.value, 72.0)
         self.assertEqual(fv.confidence, 0.5)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(payload["reason"], "llm_partial_evidence")
         self.assertEqual(payload["evidence"], [])
 
@@ -1083,7 +1083,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         fv = features["momentum"]
         self.assertEqual(fv.source, "llm")
         self.assertEqual(fv.confidence, 0.5)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(len(payload["evidence"]), 1)
         self.assertEqual(payload["evidence"][0]["quote"], "hired 40 engineers")
         self.assertEqual(payload["reason"], "llm_partial_evidence")
@@ -1106,7 +1106,7 @@ class VitalidadExtractorTests(unittest.TestCase):
         self.assertEqual(fv.source, "llm")
         self.assertEqual(fv.value, 64.0)
         self.assertEqual(fv.confidence, 0.5)
-        payload = json.loads(fv.raw_value)
+        payload = fv.raw_value
         self.assertEqual(payload["reason"], "llm_partial_evidence")
         self.assertEqual(payload["evidence"], [])
 

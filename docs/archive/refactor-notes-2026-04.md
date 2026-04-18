@@ -1,3 +1,14 @@
+# Archivo histórico — notas del refactor del engine (abril 2026)
+
+Este documento acumuló las notas de los 5 reviews que acompañaron el
+refactor de las 5 dimensiones del scoring engine (Vitalidad, Presencia,
+Coherencia, Diferenciación, Percepción). Se conserva como referencia
+histórica. El estado actual del engine y las decisiones vigentes están
+en `docs/scoring_review.md` (sección "Estado tras refactor") y en los
+commits de git correspondientes.
+
+---
+
 # REVIEW NOTES — Rediseño Percepción
 
 **Branch:** `refactor/percepcion`
