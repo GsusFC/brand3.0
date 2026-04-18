@@ -220,3 +220,51 @@ Verificación focal de Coherencia:
 - `messaging_consistency` preserva evidencia útil para conversación comercial: `self_category`, `third_party_category`, `aligned_themes`, `gaps`, `reasoning`.
 - `tone_consistency` conserva citas literales en `examples`, pero el contrato usa `gap_signal` en vez de `verdict`. Como el prompt original no está disponible, lo dejo como observación y no como fallo literal.
 - Los fallbacks heurísticos de Coherencia devuelven razones y señales accionables; no son solo scores neutrales mudos.
+
+# Review report — Dimensión Percepción
+
+## Resumen ejecutivo
+
+- **Decisión**: APPROVE
+- **Fixes aplicados**: 1
+- **Bloqueantes**: 0
+- **Advertencias**: 2
+
+## Fixes aplicados
+
+- `4314092` — endurecí `brand_sentiment` para que cualquier evidencia LLM malformada degrade `confidence` y para que `raw_value` refleje explícitamente cuándo se aplicó el cap por controversia ([src/features/percepcion.py](/Users/gsus/Antigravity/Brand3/brand3/src/features/percepcion.py:69), [src/features/percepcion.py](/Users/gsus/Antigravity/Brand3/brand3/src/features/percepcion.py:211)). Antes, si se colaba mezcla de items válidos e inválidos, la feature mantenía `confidence=0.85`, y el cap a 35 no dejaba traza estructurada en el payload.
+
+## Bloqueantes restantes
+
+Ninguno.
+
+## Advertencias
+
+### A1. El prompt original no está en el repo
+
+No encontré `brand3-percepcion-implement-claudecode.md` ni variantes cercanas en el workspace. Pude verificar el estado final contra el brief actual y contra `REVIEW_NOTES.md`, pero no hacer una auditoría literal línea por línea del prompt del implementador.
+
+### A2. Quedan referencias legacy a `sentiment_score` / `controversy_flag` en `src/learning/`
+
+`REVIEW_NOTES.md` ya lo anticipa, y el grep confirma que el learning sigue anclado a nombres viejos fuera del scope del refactor de Percepción. No rompe la suite actual ni el scorer principal, pero es deuda clara para una pasada posterior de housekeeping.
+
+## Tests
+
+- `PYTHONPATH=. ./.venv/bin/pytest -v` → **143 passed**
+
+Verificación focal:
+- `dimensions.py` declara exactamente `brand_sentiment`, `mention_volume`, `sentiment_trend`, `review_quality` con pesos `0.40 / 0.25 / 0.20 / 0.15`.
+- `raw_value` de las 4 features sale como dict nativo en [src/features/percepcion.py](/Users/gsus/Antigravity/Brand3/brand3/src/features/percepcion.py).
+- `percepcion_llm.py` no existe.
+- `PercepcionExtractor` acepta `llm` y `brand_service.py` ya usa `PercepcionExtractor(llm=llm)`.
+- `LLMAnalyzer` conserva `analyze_sentiment` y añade `analyze_brand_sentiment`.
+- `engine.py` ya no contiene `controversia_activa`; `sin_datos_suficientes` sigue operativa.
+- `test_weighted_average_and_composite_score` está matemáticamente correcto:
+  `percepcion = 0.40*70 + 0.25*65 + 0.20*55 + 0.15*50 = 62.75`
+  y el composite `70.9` cuadra con los pesos de dimensión actuales.
+
+## Notas cualitativas
+
+- `brand_sentiment` conserva evidencia útil para conversación comercial: `overall_tone`, `positive_themes`, `negative_themes`, `evidence`, `controversy_details`.
+- El cap por controversia ahora queda trazado en `raw_value` mediante `controversy_cap_applied` y `capped_from_score`, que era la pieza accionable que faltaba para explicar por qué una marca con tono mixto cae a `<=35`.
+- `sentiment_trend` cumple el patrón pedido: dos llamadas LLM sobre mitades históricas cuando hay suficiente data fechada, y fallback heurístico normalizado con `method: "heuristic_fallback"` cuando no.
