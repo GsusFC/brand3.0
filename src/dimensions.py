@@ -155,30 +155,20 @@ DIMENSIONS = {
         "description": "¿Está activa, publicando, evolucionando, o es una marca muerta?",
         "weight": 0.15,
         "features": {
-            "content_frequency": {
-                "description": "Frecuencia de publicación en web y socials",
-                "weight": 0.30,
-                "sources": ["web_scrape", "social_media"],
-            },
             "content_recency": {
-                "description": "¿Cuándo fue la última publicación/actualización?",
-                "weight": 0.25,
-                "sources": ["web_scrape", "social_media"],
-            },
-            "growth_signals": {
-                "description": "¿Hay señales de crecimiento? (nuevos seguidores, contenido, etc.)",
-                "weight": 0.20,
-                "sources": ["social_media", "exa"],
-            },
-            "tech_modernity": {
-                "description": "¿La web usa tecnología moderna? (no es un site de 2015)",
-                "weight": 0.15,
-                "sources": ["web_scrape"],
-            },
-            "evolution_signs": {
-                "description": "¿Hay evidencia de rebranding, nuevos productos, expansión?",
-                "weight": 0.10,
+                "description": "¿Cuándo fue la última publicación detectable en fuentes terceras?",
+                "weight": 0.40,
                 "sources": ["exa"],
+            },
+            "publication_cadence": {
+                "description": "Consistencia de la cadencia de publicación en los últimos 12 meses",
+                "weight": 0.35,
+                "sources": ["exa"],
+            },
+            "momentum": {
+                "description": "¿Está construyendo o en mantenimiento? Juicio LLM con citas literales de menciones recientes",
+                "weight": 0.25,
+                "sources": ["exa", "llm_analysis"],
             },
         },
         "rules": [

@@ -39,11 +39,9 @@ class ScoringEngineTests(unittest.TestCase):
                 "brand_personality": FeatureValue("brand_personality", 80.0),
             },
             "vitalidad": {
-                "content_frequency": FeatureValue("content_frequency", 80.0),
                 "content_recency": FeatureValue("content_recency", 90.0),
-                "growth_signals": FeatureValue("growth_signals", 60.0),
-                "tech_modernity": FeatureValue("tech_modernity", 75.0),
-                "evolution_signs": FeatureValue("evolution_signs", 50.0),
+                "publication_cadence": FeatureValue("publication_cadence", 80.0),
+                "momentum": FeatureValue("momentum", 60.0),
             },
         }
 
@@ -52,7 +50,9 @@ class ScoringEngineTests(unittest.TestCase):
         self.assertAlmostEqual(brand.dimensions["coherencia"].score, 66.5)
         self.assertAlmostEqual(brand.dimensions["presencia"].score, 73.0)
         self.assertAlmostEqual(brand.dimensions["diferenciacion"].score, 66.1)
-        self.assertAlmostEqual(brand.composite_score, 66.3)
+        # vitalidad = 0.40*90 + 0.35*80 + 0.25*60 = 79.0
+        self.assertAlmostEqual(brand.dimensions["vitalidad"].score, 79.0)
+        self.assertAlmostEqual(brand.composite_score, 66.95, places=1)
 
     def test_presence_ghost_brand_rule_caps_score(self):
         score = self.engine.score_dimension(
@@ -144,11 +144,9 @@ class ScoringEngineTests(unittest.TestCase):
                 "brand_personality": FeatureValue("brand_personality", 78.0),
             },
             "vitalidad": {
-                "content_frequency": FeatureValue("content_frequency", 82.0),
                 "content_recency": FeatureValue("content_recency", 92.0),
-                "growth_signals": FeatureValue("growth_signals", 76.0),
-                "tech_modernity": FeatureValue("tech_modernity", 90.0),
-                "evolution_signs": FeatureValue("evolution_signs", 72.0),
+                "publication_cadence": FeatureValue("publication_cadence", 82.0),
+                "momentum": FeatureValue("momentum", 75.0),
             },
         }
 

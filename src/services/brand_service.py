@@ -650,7 +650,7 @@ def run(
         presencia_ext = PresenciaExtractor()
         features_by_dim["presencia"] = presencia_ext.extract(web=web_data, exa=exa_data, social=social_data)
 
-        vitalidad_ext = VitalidadExtractor()
+        vitalidad_ext = VitalidadExtractor(llm=llm)
         features_by_dim["vitalidad"] = vitalidad_ext.extract(web=web_data, exa=exa_data)
 
         if llm:

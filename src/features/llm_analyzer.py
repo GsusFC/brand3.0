@@ -171,6 +171,67 @@ Return JSON:
 }}"""
         )
 
+    def analyze_momentum(self, mentions: list[dict], brand_name: str) -> dict:
+        """
+        Is the brand actively building or drifting into maintenance?
+
+        Reads third-party mentions (last ~6 months recommended) and returns a
+        structured verdict with literal quotes as evidence.
+
+        mentions: list of dicts with keys {text, url, published_date}.
+        Returns JSON-shaped dict: {momentum_score, verdict, evidence[], reasoning}.
+        """
+        # REVIEW: método nuevo añadido al LLMAnalyzer para soportar la feature
+        # `momentum` de vitalidad. Sigue el patrón de los otros `analyze_*`.
+        if not mentions:
+            return {}
+
+        lines = []
+        for i, m in enumerate(mentions[:15], start=1):
+            text = (m.get("text") or "")[:400].replace("\n", " ").strip()
+            url = m.get("url") or ""
+            date = m.get("published_date") or "unknown"
+            if not text:
+                continue
+            lines.append(f"[{i}] ({date}) {url}\n{text}")
+        mentions_block = "\n---\n".join(lines)
+
+        if not mentions_block:
+            return {}
+
+        return self._call_json(
+            system=(
+                "You are a brand momentum analyst. You read recent third-party "
+                "mentions and decide whether a brand is actively building, merely "
+                "maintaining, or declining. You quote sources literally. Return "
+                "ONLY valid JSON."
+            ),
+            user=f"""Assess the momentum of the brand "{brand_name}" based on these recent mentions.
+
+Mentions:
+---
+{mentions_block}
+---
+
+Rules:
+- Look for signals of active construction (new launches, key hires, expansion,
+  strategic partnerships, significant investment) vs signals of maintenance or
+  decline (media silence, layoffs, customer loss, unanswered controversies).
+- Evidence MUST be literal quotes pulled from the mentions above, not paraphrase.
+- If evidence is ambiguous or insufficient, return verdict "unclear" with a low score.
+- Ignore mentions that are clearly NOT about "{brand_name}" (scraping false positives).
+
+Return JSON with this exact structure:
+{{
+    "momentum_score": 0-100,
+    "verdict": "building" | "maintaining" | "declining" | "unclear",
+    "evidence": [
+        {{"quote": "literal quote from a mention", "source_url": "the url", "signal": "positive" | "negative" | "neutral"}}
+    ],
+    "reasoning": "1-2 sentences explaining the verdict"
+}}"""
+        )
+
     def analyze_coherence(self, web_content: str, third_party_descriptions: list[str],
                            brand_name: str) -> dict:
         """

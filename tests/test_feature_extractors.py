@@ -348,37 +348,177 @@ class PresenciaExtractorTests(unittest.TestCase):
 
 
 class VitalidadExtractorTests(unittest.TestCase):
+    """Cover the 3 features (content_recency, publication_cadence, momentum)."""
+
     def setUp(self):
         self.extractor = VitalidadExtractor()
 
-    def test_tech_modernity_rewards_real_developer_surface_signals(self):
-        web = WebData(
-            url="https://example.dev",
-            title="Example Devtool",
-            markdown_content=(
-                "# Predictive infrastructure\n\n"
-                "API docs, playground, GitHub, and deployment options for AWS and Azure.\n"
-            ),
+    # ── content_recency ────────────────────────────────────────────────
+
+    def _exa_with_dates(self, days_ago_list: list[int]) -> ExaData:
+        from datetime import datetime, timedelta
+        base = datetime.now()
+        mentions = [
+            ExaResult(
+                url=f"https://example.com/article-{i}",
+                title=f"Article {i}",
+                text="content",
+                published_date=(base - timedelta(days=d)).strftime("%Y-%m-%d"),
+            )
+            for i, d in enumerate(days_ago_list)
+        ]
+        return ExaData(brand_name="Test", mentions=mentions)
+
+    def test_content_recency_recent_publication_scores_high(self):
+        exa = self._exa_with_dates([3])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["content_recency"].value, 100.0)
+
+    def test_content_recency_30_days_is_mid_high(self):
+        exa = self._exa_with_dates([25])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["content_recency"].value, 85.0)
+
+    def test_content_recency_6_months_drops_to_mid(self):
+        exa = self._exa_with_dates([150])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["content_recency"].value, 40.0)
+
+    def test_content_recency_past_year_is_low(self):
+        exa = self._exa_with_dates([250])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["content_recency"].value, 20.0)
+
+    def test_content_recency_over_365_days_is_very_low(self):
+        exa = self._exa_with_dates([400])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["content_recency"].value, 10.0)
+
+    def test_content_recency_no_dates_returns_neutral_with_reason(self):
+        import json
+        features = self.extractor.extract(exa=None)
+        fv = features["content_recency"]
+        self.assertEqual(fv.value, 30.0)
+        self.assertEqual(fv.source, "none")
+        payload = json.loads(fv.raw_value)
+        self.assertIsNone(payload["most_recent_date"])
+        self.assertIsNone(payload["days_ago"])
+        self.assertIsNone(payload["evidence_url"])
+        self.assertEqual(payload["reason"], "no_dates_found")
+
+    # ── publication_cadence ────────────────────────────────────────────
+
+    def test_publication_cadence_fewer_than_2_dates_is_low(self):
+        import json
+        exa = self._exa_with_dates([15])
+        features = self.extractor.extract(exa=exa)
+        fv = features["publication_cadence"]
+        self.assertEqual(fv.value, 20.0)
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(payload["reason"], "insufficient_dates_12m")
+
+    def test_publication_cadence_regular_rhythm_scores_high(self):
+        # 3 dates roughly ~20 days apart → mean_gap < 30 → 90
+        exa = self._exa_with_dates([10, 35, 60])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["publication_cadence"].value, 90.0)
+
+    def test_publication_cadence_moderate_rhythm_scores_mid(self):
+        # 3 dates ~100 days apart → 90 <= mean < 180 → 50
+        exa = self._exa_with_dates([5, 110, 215])
+        features = self.extractor.extract(exa=exa)
+        self.assertEqual(features["publication_cadence"].value, 50.0)
+
+    # ── momentum ───────────────────────────────────────────────────────
+
+    def test_momentum_without_llm_returns_heuristic_fallback(self):
+        import json
+        exa = self._exa_with_dates([30, 60])
+        features = self.extractor.extract(exa=exa)
+        fv = features["momentum"]
+        self.assertEqual(fv.value, 50.0)
+        self.assertEqual(fv.source, "heuristic_fallback")
+        self.assertEqual(fv.confidence, 0.3)
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(payload["reason"], "llm_unavailable")
+
+    def test_momentum_with_llm_uses_structured_verdict(self):
+        import json
+
+        class FakeLLM:
+            api_key = "sk-test"
+
+            def analyze_momentum(self, mentions, brand_name):
+                return {
+                    "momentum_score": 82,
+                    "verdict": "building",
+                    "evidence": [
+                        {
+                            "quote": "shipped a new inference runtime",
+                            "source_url": "https://example.com/article-0",
+                            "signal": "positive",
+                        }
+                    ],
+                    "reasoning": "Fresh product launches in the last quarter.",
+                }
+
+        extractor = VitalidadExtractor(llm=FakeLLM())
+        exa = self._exa_with_dates([10, 40])
+        features = extractor.extract(exa=exa)
+
+        fv = features["momentum"]
+        self.assertEqual(fv.value, 82.0)
+        self.assertEqual(fv.source, "llm")
+        self.assertEqual(fv.confidence, 0.85)
+        payload = json.loads(fv.raw_value)
+        self.assertEqual(payload["verdict"], "building")
+        self.assertEqual(len(payload["evidence"]), 1)
+        self.assertIn("shipped a new inference runtime", payload["evidence"][0]["quote"])
+
+    def test_momentum_with_unclear_verdict_has_lower_confidence(self):
+        import json
+
+        class FakeLLM:
+            api_key = "sk-test"
+
+            def analyze_momentum(self, mentions, brand_name):
+                return {
+                    "momentum_score": 50,
+                    "verdict": "unclear",
+                    "evidence": [],
+                    "reasoning": "Evidence insufficient.",
+                }
+
+        extractor = VitalidadExtractor(llm=FakeLLM())
+        exa = self._exa_with_dates([20])
+        features = extractor.extract(exa=exa)
+        fv = features["momentum"]
+        self.assertEqual(fv.confidence, 0.5)
+        self.assertEqual(json.loads(fv.raw_value)["verdict"], "unclear")
+
+    def test_momentum_with_no_recent_mentions_returns_fallback(self):
+        import json
+
+        class FakeLLM:
+            api_key = "sk-test"
+
+            def analyze_momentum(self, mentions, brand_name):
+                raise AssertionError("should not be called when no recent mentions")
+
+        extractor = VitalidadExtractor(llm=FakeLLM())
+        # Only old mentions, outside the 6-month window
+        exa = self._exa_with_dates([400, 500])
+        features = extractor.extract(exa=exa)
+        fv = features["momentum"]
+        self.assertEqual(fv.source, "heuristic_fallback")
+        self.assertEqual(json.loads(fv.raw_value)["reason"], "no_recent_mentions_6m")
+
+    def test_extract_always_returns_three_features(self):
+        features = self.extractor.extract(web=None, exa=None)
+        self.assertEqual(
+            set(features.keys()),
+            {"content_recency", "publication_cadence", "momentum"},
         )
-
-        feature = self.extractor._tech_modernity(web)
-
-        self.assertGreater(feature.value, 60.0)
-        self.assertIn("dev_surface=", feature.raw_value)
-
-    def test_tech_modernity_does_not_inflate_from_framework_name_drops(self):
-        web = WebData(
-            url="https://example.com",
-            title="Example",
-            markdown_content=(
-                "# Example\n\n"
-                "We love React, Next.js, TypeScript, and Tailwind.\n"
-            ),
-        )
-
-        feature = self.extractor._tech_modernity(web)
-
-        self.assertLessEqual(feature.value, 55.0)
 
 
 class WebCollectorTests(unittest.TestCase):
