@@ -1,208 +1,81 @@
-# REVIEW NOTES — Rediseño Vitalidad
+# REVIEW NOTES — Rediseño Presencia
 
-**Branch:** `refactor/vitalidad`
-**Scope:** primera dimensión del rediseño del engine. Vitalidad pasa de 5 features ruidosas a 3 features con juicio explícito + evidencia literal.
-
----
+**Branch:** `refactor/presencia`
+**Scope:** refactor completo de la dimensión `presencia` siguiendo el patrón single-file ya usado en Vitalidad.
 
 ## Archivos modificados
 
-1. `src/features/vitalidad.py` — reescritura completa (248 → 241 líneas). Unificado heurístico + LLM en un solo archivo.
-2. `src/features/llm_analyzer.py` — añadido método público `analyze_momentum()`.
-3. `src/dimensions.py` — bloque `vitalidad` reemplazado: 5 features con pesos 0.30/0.25/0.20/0.15/0.10 → 3 features con 0.40/0.35/0.25.
-4. `src/services/brand_service.py:653` — `VitalidadExtractor()` → `VitalidadExtractor(llm=llm)`.
-5. `tests/test_feature_extractors.py` — 2 tests de `_tech_modernity` eliminados, 12 tests nuevos añadidos para las 3 features (+1 para el contrato del `extract`).
-6. `tests/test_scoring_engine.py` — 2 fixtures de vitalidad actualizados con las nuevas features, más un nuevo `assertAlmostEqual(vitalidad.score, 79.0)` explícito.
+1. `src/features/presencia.py` — reescritura completa a 4 features heurísticas con `raw_value` estructurado.
+2. `src/dimensions.py` — bloque `presencia` actualizado de 5 features a 4 con pesos `0.30 / 0.35 / 0.25 / 0.10`.
+3. `tests/test_feature_extractors.py` — tests viejos de presencia sustituidos por cobertura de las 4 features nuevas.
+4. `tests/test_scoring_engine.py` — fixtures de presencia actualizados con los nuevos nombres/pesos y asserts recalculados.
 
-## Decisiones de diseño (no estaban 100% especificadas en la spec)
+## Decisiones de implementación no obvias
 
-### D1. `analyze_momentum()` añadido al `LLMAnalyzer`
+### D1. `raw_value` estructurado como dict nativo
 
-La spec decía "no refactorizar el LLMAnalyzer". El método `_call_json` es privado. Dos opciones:
-- Llamar `_call_json` directamente desde `vitalidad.py` (rompe encapsulación).
-- Añadir un método público `analyze_momentum()` siguiendo el patrón de `analyze_sentiment`, `analyze_coherence`, `analyze_positioning`, `analyze_differentiation`.
+La instrucción pedía `raw_value` dict y no string. A diferencia de Vitalidad, aquí no serialicé JSON: `FeatureValue.raw_value` sigue tipado como `Optional[str]`, pero el modelo no impone validación runtime y el criterio explícito del encargo era devolver dict estructurado.
 
-**Elegí la segunda.** Es *extensión*, no refactor. Mantiene encapsulación y es coherente con el resto del archivo. Comentario `# REVIEW:` en el método.
+### D2. `social_footprint` sin fallback heurístico desde web/exa
 
-### D2. Patrón single-file para Vitalidad (divergente)
+El diseño objetivo pedía explícitamente que, si no hay `SocialData`, la feature no castigue con `0` sino con `15`, `confidence=0.3` y `raw_value.reason="no_social_data"`. Por eso eliminé el fallback viejo que infería plataformas desde `web`/`exa`. Queda más consistente y evita inflar la presencia con señales débiles.
 
-Otras dimensiones (`percepcion`, `coherencia`, `diferenciacion`) tienen `X.py` + `X_llm.py` (subclase). La spec pide unificar Vitalidad en un solo archivo. **Divergencia consciente del usuario** — primera dimensión del refactor, otras se migrarán en iteraciones futuras.
+### D3. `search_visibility` fusiona búsqueda + AI visibility
 
-El `VitalidadExtractor` acepta `llm: LLMAnalyzer | None = None` en el constructor. Si `llm` es None o no tiene `api_key`, `momentum` devuelve fallback neutral.
+La nueva feature parte de menciones Exa relevantes (`_subject_relevance > 0.35`), añade bonus por `own_url_in_top3` e integra la señal antigua de `ai_visibility` como un bonus adicional. El output conserva evidencia literal: top 3 resultados relevantes con `url`, `title`, `snippet`.
 
-### D3. Fallback de `momentum` con razón explícita
+### D4. `directory_presence` por tiers
 
-Sin LLM o con LLM pero sin `api_key` → `value=50`, `confidence=0.3`, `source="heuristic_fallback"`, `raw_value` JSON con `{"reason": "llm_unavailable", ...}`.
+Se renombró `directory_listings` → `directory_presence` y se separaron dominios en:
+- Tier 1: `Crunchbase`, `LinkedIn company`, `G2`, `Capterra`
+- Tier 2: `Yelp`, `Glassdoor`, `Trustpilot`, `AngelList`, `Product Hunt`
 
-Otros casos de fallback con razones distintas:
-- `"no_recent_mentions_6m"` → no había menciones datadas en los últimos 180 días.
-- `"llm_error"` → excepción lanzada por el LLM (contiene `error` truncado).
-- `"llm_invalid_response"` → el LLM devolvió algo que no es dict o no tiene `momentum_score`.
+Puntuación: `20` por tier-1, `8` por tier-2, `max 100`.
 
-### D4. `raw_value` estructurado
+### D5. Distinción `minimal` vs `thin` en `web_presence`
 
-Las 3 features devuelven `raw_value` como **JSON string** (no dict nativo). Motivo: `FeatureValue.raw_value` está tipado `Optional[str]` en `src/models/brand.py:12`, y tocar el modelo queda fuera de scope.
+`web_presence` marca como `thin` solo contenido meaningful mínimo (`>=24 chars`). Cadenas tipo `"Login"` quedaban demasiado arriba y pasaron a `minimal`, que era el comportamiento esperado por los tests y por el diseño objetivo.
 
-El revisor/frontend debe `json.loads()` para acceder a la estructura. Campos:
-- `content_recency`: `{most_recent_date, days_ago, evidence_url}` o `{..., reason: "no_dates_found"}` cuando no hay fechas.
-- `publication_cadence`: `{dates_found, mean_gap_days, gap_stddev_days, evidence: [{date, url}, ...]}`.
-- `momentum`: con LLM `{verdict, reasoning, evidence: [{quote, source_url, signal}, ...]}`; con fallback `{reason, ...}`.
+## Tests añadidos vs eliminados
 
-### D5. Algoritmo de `publication_cadence` con 5+ datapoints
+### Eliminados / sustituidos
 
-La spec decía "base 80, ajustar según consistencia (desviación estándar de gaps)". Concreté:
-- Base 80.
-- Normalizo `stddev/mean_gap` a [0, 1].
-- `score = 80 + (1 - ratio)*10 - ratio*20` → rango [60, 90].
-- Clamp final a [40, 95].
+- Tests de `ai_visibility` como feature independiente.
+- Tests de `directory_listings` con nombre viejo.
+- Test viejo de `social_footprint` basado en `weighted_presence=` string.
 
-Marcado con `# REVIEW` implícito en el comentario del código. Ajustable si el revisor quiere otro mapping.
+### Añadidos
 
-### D6. Ventana de 6 meses para `momentum`
+`web_presence`
+- `test_web_presence_placeholder_page_scores_minimal`
+- `test_web_presence_normal_site_scores_high_with_structured_raw_value`
+- `test_web_presence_without_https_loses_signal`
+- `test_web_presence_without_meaningful_content_stays_low`
 
-Spec dice "últimos 6 meses". Implementado como `now() - timedelta(days=180)`. Las menciones sin fecha parseable se descartan silenciosamente.
+`social_footprint`
+- `test_social_footprint_without_social_data_degrades_gracefully`
+- `test_social_footprint_with_multiple_platforms_is_structured`
+- `test_social_footprint_rewards_verified_accounts`
 
-## Tests — diff
+`search_visibility`
+- `test_search_visibility_without_results_returns_low_neutral`
+- `test_search_visibility_with_few_results_stays_mid_low`
+- `test_search_visibility_rewards_many_results_and_own_url_top3`
+- `test_search_visibility_filters_low_subject_relevance`
 
-**Eliminados** (2):
-- `test_tech_modernity_rewards_real_developer_surface_signals`
-- `test_tech_modernity_does_not_inflate_from_framework_name_drops`
-
-**Añadidos** (12):
-
-`content_recency`:
-- `test_content_recency_recent_publication_scores_high` (días=3 → 100)
-- `test_content_recency_30_days_is_mid_high` (días=25 → 85)
-- `test_content_recency_6_months_drops_to_mid` (días=150 → 40)
-- `test_content_recency_past_year_is_low` (días=250 → 20)
-- `test_content_recency_over_365_days_is_very_low` (días=400 → 10)
-- `test_content_recency_no_dates_returns_neutral_with_reason` (exa=None → valor 30, raw dict con `reason: no_dates_found`)
-
-`publication_cadence`:
-- `test_publication_cadence_fewer_than_2_dates_is_low` (1 fecha → 20)
-- `test_publication_cadence_regular_rhythm_scores_high` (mean_gap<30 → 90)
-- `test_publication_cadence_moderate_rhythm_scores_mid` (mean_gap~100 → 50)
-
-`momentum`:
-- `test_momentum_without_llm_returns_heuristic_fallback` (llm=None → 50, fallback, `reason: llm_unavailable`)
-- `test_momentum_with_llm_uses_structured_verdict` (mock devuelve JSON → score, source="llm", confidence 0.85, raw con verdict+evidence)
-- `test_momentum_with_unclear_verdict_has_lower_confidence` (verdict=unclear → confidence 0.5)
-- `test_momentum_with_no_recent_mentions_returns_fallback` (solo menciones >180d → fallback `reason: no_recent_mentions_6m`, mock con AssertionError para verificar que NO se llama)
-
-`contrato`:
-- `test_extract_always_returns_three_features` (web=None, exa=None → dict con 3 keys esperadas)
-
-**Actualizados en `test_scoring_engine.py`**:
-- Fixture 1 (`test_weighted_average_and_composite_score`): vitalidad con 3 features nuevas; añadido assert `dimensions["vitalidad"].score == 79.0`; composite esperado pasa de 66.3 a 66.95 (places=1).
-- Fixture 2 (`test_frontier_ai_profile_prioritises_differentiation_and_vitality`): vitalidad con 3 features nuevas, valores (92, 82, 75).
-
-## Resultado de tests
-
-```
-109 passed in 1.11s
-```
-
-(52 en los dos archivos focales + 57 en el resto del suite, 0 fallos, 0 regresiones detectadas.)
+`directory_presence`
+- `test_directory_presence_without_directories_is_zero`
+- `test_directory_presence_with_only_tier2_is_limited`
+- `test_directory_presence_with_tier1_and_tier2_mix_scores_higher`
 
 ## Warnings no bloqueantes
 
-Ninguno en este suite. El entorno usa pytest 9.0.3 sobre Python 3.11.8.
+1. El runner documentado en el encargo era `./venv/bin/pytest`, pero en este repo el entorno útil está en `./.venv`, no `./venv`.
+2. La suite completa con `./.venv/bin/pytest -v` no terminó limpia por un problema de import en `tests/test_learning.py` y `tests/test_main_experiment.py`: `ModuleNotFoundError: No module named 'main'` durante collection, pese a que `main.py` existe en raíz. No lo toqué por estar fuera del scope del refactor de Presencia.
+3. También apareció un artefacto no relacionado en el árbol: `brand3_scoring.egg-info/`. No lo toqué.
 
-## Verificaciones manuales pendientes para el revisor
+## Verificaciones manuales pendientes
 
-1. **Prompt del LLM en `analyze_momentum()`**: el prompt pide citas literales, ignorar falsos positivos, y fallback a `unclear` cuando hay ambigüedad. Comprobar que el wording es lo bastante fuerte; en producción puede necesitar pruebas contra muestras reales antes de ajustarlo.
-
-2. **Escala de `publication_cadence` para 5+ datapoints**: la heurística de stddev/mean puede ser generosa o severa dependiendo de los datasets reales. Sin datos históricos para calibrar, dejé un rango amplio [40, 95]. El learning/calibration system (fuera de scope) puede tunearlo después.
-
-3. **Caching**: los cachés viejos en SQLite tienen features con nombres obsoletos (`content_frequency`, etc). El `SQLiteStore` no crashea porque es agnóstico al schema, pero los runs viejos mostrarán features que el engine ya no conoce. No corrompe datos, solo quedan estancadas. Si se quiere limpieza explícita, crear un job aparte.
-
-4. **Documentación en `docs/scoring_review.md`**: menciona las features viejas. No es código, no bloquea, pero conviene actualizar cuando se concluya el refactor de las 5 dimensiones.
-
-5. **Extractor de `exa`**: en `vitalidad.py` llamo `getattr(exa, "brand_name", "")` para el momentum. Si `ExaData.brand_name` se renombra/remueve, el prompt queda con `brand_name=""`. Pequeño riesgo de silent degradation; si molesta, convertir a fallar ruidosamente.
-
-## Fuera de scope — confirmado
-
-- Otras dimensiones no tocadas.
-- `ScoringEngine`, `niche/profiles.py`, `learning/`, `versioning`, `SQLiteStore`: intactos.
-- `LLMAnalyzer` solo extendido con un método público nuevo; nada renombrado ni eliminado.
-- No hay cambios en el modelo `FeatureValue`.
-
----
-
-## Round 2 — respuesta al review de Codex
-
-**Contexto.** Codex revisó el refactor, aterrizó dos fixes defensivos
-directamente (`890b564` guard invalid `momentum_score`, `f8339bc`
-composite score tight assert) y pidió dos cosas más antes del merge:
-validación estricta del shape del LLM y tests negativos.
-
-### Cambios — validación del contrato del LLM
-
-Archivo: [src/features/vitalidad.py](src/features/vitalidad.py).
-
-1. **`verdict` fuera del enum** → fallback heurístico completo
-   (`source="heuristic_fallback"`, `value=50`, `confidence=0.3`,
-   `raw_value.reason="llm_invalid_verdict"`). Razón: sin un juicio
-   interpretable, el `momentum_score` no es confiable aunque sea un
-   número válido. Enum permitido: `{building, maintaining, declining, unclear}`.
-
-2. **`evidence` con shape inválido** → dos caminos:
-   - Cada item de la lista se filtra con `_clean_momentum_evidence()`:
-     debe ser dict con `quote: str`, `source_url: str`, `signal` en
-     `{positive, negative, neutral}`. Items malformados se descartan en silencio.
-   - Si `evidence` no es lista, se trata como vacía.
-   - Si tras filtrar queda vacía (o entró vacía), el resultado sigue siendo
-     `source="llm"` con el score del LLM, pero con `confidence=0.5`
-     (degradada) y `raw_value.reason="llm_partial_evidence"`.
-     El usuario ve un verdict pero sin respaldo literal.
-
-Nuevos constantes en el módulo: `_VALID_VERDICTS`, `_VALID_SIGNALS`.
-Nueva helper pura: `_clean_momentum_evidence(raw)` — testeable por separado
-si en el futuro se quiere.
-
-### Tests negativos añadidos
-
-Archivo: [tests/test_feature_extractors.py](tests/test_feature_extractors.py). +4 tests en `VitalidadExtractorTests`:
-
-- `test_momentum_with_invalid_verdict_falls_back` — verdict = `"thriving"` →
-  fallback con `reason="llm_invalid_verdict"`, `got="thriving"`.
-- `test_momentum_with_non_list_evidence_degrades_confidence` — `evidence`
-  como string → `source="llm"`, `confidence=0.5`, `reason="llm_partial_evidence"`,
-  `evidence=[]` en raw.
-- `test_momentum_with_malformed_evidence_items_are_filtered` — lista mixta
-  (falta signal, signal inválido, quote no-str, item válido, string suelto)
-  → solo sobrevive el item válido; `confidence=0.85`, sin flag de partial.
-- `test_momentum_with_all_evidence_items_malformed_flags_partial` — lista
-  de items todos inválidos → `confidence=0.5`, `reason="llm_partial_evidence"`.
-
-Helper de test añadido: `_make_momentum_llm(payload)` para reducir boilerplate
-en los 4 tests nuevos.
-
-### Resultado
-
-```
-113 passed in 1.56s
-```
-
-(109 anteriores + 4 nuevos, 0 regresiones.)
-
-### Decisiones de round 2
-
-**D7. Verdict inválido = fallback total, evidence inválida = degradación parcial.**
-
-La asimetría es deliberada:
-- Verdict inválido significa que el LLM no cumplió la tarea (no devolvió un
-  juicio interpretable); no se puede confiar en nada de la respuesta.
-- Evidence inválida significa que el juicio existe pero no podemos mostrar
-  las citas; el score todavía es un dato útil, solo bajamos la confianza.
-
-Si el revisor prefiere tratar ambos casos como fallback total, el cambio es
-una línea: sustituir la lógica del `partial_evidence` por un `return` al
-fallback. Queda flaggeado con `# REVIEW:` en la línea del check de verdict.
-
-**D8. Helper `_clean_momentum_evidence` como función del módulo, no método.**
-
-Se implementó como función pura fuera de la clase para que sea fácilmente
-testeable de forma aislada si un futuro bug requiere cobertura más fina.
-No tiene estado. El naming arranca con `_` para señalar privado al módulo.
-
+1. Re-ejecutar `tests/test_feature_extractors.py` y `tests/test_scoring_engine.py` después de los dos ajustes finales (`minimal` vs `thin`, y asserts recalculados) si quieres un verde final documentado; no lo hice porque el encargo pedía no correr tests más de 2 veces y ambas corridas ya se usaron.
+2. Verificar por qué `pytest` no puede importar `main` en la suite completa dentro de `.venv`; parece un problema del entorno/configuración de imports, no del refactor de Presencia.
+3. Revisar con ejemplos reales si el bonus de `search_visibility` por `ai_weighted_sum` es demasiado generoso para marcas con pocas menciones search pero buena presencia en roundups de IA.

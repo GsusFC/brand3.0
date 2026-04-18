@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from src.collectors.exa_collector import ExaData, ExaResult
 from src.collectors.exa_collector import ExaCollector
+from src.collectors.social_collector import PlatformMetrics, SocialData
 from src.collectors.web_collector import WebData
 from src.collectors.web_collector import WebCollector
 from src.features.coherencia import CoherenciaExtractor
@@ -266,85 +267,319 @@ class PresenciaExtractorTests(unittest.TestCase):
     def setUp(self):
         self.extractor = PresenciaExtractor()
 
-    def test_social_footprint_rewards_professional_and_builder_mix(self):
-        web = WebData(
-            url="https://example.dev",
-            title="Example",
-            markdown_content=(
-                "# Example\n\n"
-                "Follow us on LinkedIn and GitHub.\n"
-                "https://linkedin.com/company/example\n"
-                "https://github.com/example\n"
-            ),
-        )
-
-        feature = self.extractor._social_footprint(web=web, exa=None, social=None)
-
-        self.assertGreaterEqual(feature.value, 55.0)
-        self.assertIn("weighted_presence=", feature.raw_value)
-        self.assertIn("builder", feature.raw_value)
-        self.assertIn("professional", feature.raw_value)
-
-    def test_ai_visibility_weights_relevance_and_brand_centrality(self):
-        exa = ExaData(
-            brand_name="Acme AI",
-            ai_visibility_results=[
+    def _exa_mentions(self, brand_name: str = "Acme") -> ExaData:
+        return ExaData(
+            brand_name=brand_name,
+            mentions=[
                 ExaResult(
-                    url="https://example.com/acme-ai-best-tools",
-                    title="Acme AI among top agent tools",
-                    text="Acme AI is recommended for enterprise automation.",
+                    url="https://acme.com/blog/launch",
+                    title="Acme launches new product",
+                    text="Acme expands its launch motion with a new platform release.",
+                    summary="Acme expands with a product release.",
                     score=0.9,
                 ),
                 ExaResult(
-                    url="https://example.com/general-roundup",
-                    title="General AI trends",
-                    text="This article mentions Acme AI in passing alongside many vendors.",
+                    url="https://techcrunch.com/acme-funding",
+                    title="Acme raises funding",
+                    text="Acme is highlighted as a growing company.",
+                    summary="Growing company profile.",
+                    score=0.8,
+                ),
+                ExaResult(
+                    url="https://random.com/roundup",
+                    title="AI roundup",
+                    text="Many vendors are covered in this roundup.",
+                    summary="General roundup with many names.",
                     score=0.3,
                 ),
-                ExaResult(
-                    url="https://example.com/random",
-                    title="Random AI roundup",
-                    text="Vague references to models and tooling.",
-                    score=0.2,
-                ),
             ],
-        )
-
-        visibility = self.extractor._ai_visibility(exa)
-
-        self.assertGreater(visibility.value, 20.0)
-        self.assertLess(visibility.value, 70.0)
-        self.assertIn("weighted=", visibility.raw_value)
-
-    def test_ai_visibility_gets_neutral_boost_from_multiple_medium_results(self):
-        exa = ExaData(
-            brand_name="Acme AI",
             ai_visibility_results=[
                 ExaResult(
-                    url="https://example.com/tools/acme-ai",
-                    title="Acme AI tooling",
-                    text="Acme AI appears in an enterprise tooling roundup.",
-                    score=0.45,
+                    url="https://example.com/acme-best-tools",
+                    title="Acme in top AI tools",
+                    text="Acme is recommended for enterprise teams.",
+                    score=0.8,
                 ),
                 ExaResult(
-                    url="https://another.example.com/acme-ai",
-                    title="Acme AI for teams",
-                    text="Acme AI is mentioned as a relevant product for teams.",
-                    score=0.4,
-                ),
-                ExaResult(
-                    url="https://third.example.com/roundup",
-                    title="AI roundup",
-                    text="Acme AI appears among notable vendors.",
-                    score=0.35,
+                    url="https://example.com/general-roundup",
+                    title="General AI roundup",
+                    text="Acme appears in a broader list.",
+                    score=0.5,
                 ),
             ],
         )
 
-        visibility = self.extractor._ai_visibility(exa)
+    def test_web_presence_placeholder_page_scores_minimal(self):
+        web = WebData(
+            url="http://placeholder.example",
+            title="Coming Soon",
+            markdown_content="Coming soon. Buy this domain today.",
+        )
 
-        self.assertGreaterEqual(visibility.value, 55.0)
-        self.assertIn("medium_results=", visibility.raw_value)
+        feature = self.extractor._web_presence(web)
+
+        self.assertEqual(feature.value, 5.0)
+        self.assertEqual(feature.raw_value["page_status"], "placeholder")
+        self.assertIn("placeholder_detected", feature.raw_value["signals_detected"])
+
+    def test_web_presence_normal_site_scores_high_with_structured_raw_value(self):
+        web = WebData(
+            url="https://example.com",
+            title="Example Platform",
+            meta_description="Example Platform helps finance teams move faster.",
+            markdown_content=(
+                "# Example Platform\n\n"
+                "Example Platform helps finance teams move faster with approvals, docs, and automation.\n"
+                "Pricing About Contact Docs Features Get started Privacy Terms.\n"
+            ),
+        )
+
+        feature = self.extractor._web_presence(web)
+
+        self.assertGreaterEqual(feature.value, 75.0)
+        self.assertTrue(feature.raw_value["has_https"])
+        self.assertEqual(feature.raw_value["page_status"], "live")
+        self.assertIsInstance(feature.raw_value["evidence_snippet"], str)
+        self.assertIn("https", feature.raw_value["signals_detected"])
+
+    def test_web_presence_without_https_loses_signal(self):
+        secure = WebData(
+            url="https://example.com",
+            title="Example",
+            meta_description="Example is a real product site.",
+            markdown_content="# Example\n\nExample is a real product site with pricing and contact.",
+        )
+        insecure = WebData(
+            url="http://example.com",
+            title="Example",
+            meta_description="Example is a real product site.",
+            markdown_content="# Example\n\nExample is a real product site with pricing and contact.",
+        )
+
+        secure_feature = self.extractor._web_presence(secure)
+        insecure_feature = self.extractor._web_presence(insecure)
+
+        self.assertGreater(secure_feature.value, insecure_feature.value)
+        self.assertFalse(insecure_feature.raw_value["has_https"])
+
+    def test_web_presence_without_meaningful_content_stays_low(self):
+        web = WebData(
+            url="https://example.com",
+            title="Example",
+            markdown_content="Login",
+        )
+
+        feature = self.extractor._web_presence(web)
+
+        self.assertLessEqual(feature.value, 35.0)
+        self.assertEqual(feature.raw_value["page_status"], "minimal")
+
+    def test_social_footprint_without_social_data_degrades_gracefully(self):
+        feature = self.extractor._social_footprint(social=None)
+
+        self.assertEqual(feature.value, 15.0)
+        self.assertEqual(feature.confidence, 0.3)
+        self.assertEqual(feature.raw_value["reason"], "no_social_data")
+
+    def test_social_footprint_with_multiple_platforms_is_structured(self):
+        social = SocialData(
+            brand_name="Example",
+            platforms={
+                "linkedin": PlatformMetrics(
+                    platform="linkedin",
+                    profile_url="https://linkedin.com/company/example",
+                    followers_count=12000,
+                    verified=True,
+                    last_post_date="2026-04-10",
+                    posts_last_30_days=6,
+                ),
+                "instagram": PlatformMetrics(
+                    platform="instagram",
+                    profile_url="https://instagram.com/example",
+                    followers_count=8000,
+                    verified=False,
+                    last_post_date="2026-04-12",
+                    posts_last_30_days=8,
+                ),
+            },
+            total_followers=20000,
+            avg_post_frequency=3,
+        )
+
+        feature = self.extractor._social_footprint(social=social)
+
+        self.assertGreaterEqual(feature.value, 55.0)
+        self.assertEqual(feature.raw_value["total_followers"], 20000)
+        self.assertEqual(feature.raw_value["active_platforms_count"], 2)
+        self.assertTrue(feature.raw_value["professional_presence"])
+        self.assertTrue(feature.raw_value["consumer_presence"])
+        self.assertEqual(len(feature.raw_value["platforms"]), 2)
+
+    def test_social_footprint_rewards_verified_accounts(self):
+        unverified = SocialData(
+            brand_name="Example",
+            platforms={
+                "linkedin": PlatformMetrics(
+                    platform="linkedin",
+                    profile_url="https://linkedin.com/company/example",
+                    followers_count=12000,
+                    verified=False,
+                    last_post_date="2026-04-10",
+                    posts_last_30_days=3,
+                )
+            },
+            total_followers=12000,
+            avg_post_frequency=2,
+        )
+        verified = SocialData(
+            brand_name="Example",
+            platforms={
+                "linkedin": PlatformMetrics(
+                    platform="linkedin",
+                    profile_url="https://linkedin.com/company/example",
+                    followers_count=12000,
+                    verified=True,
+                    last_post_date="2026-04-10",
+                    posts_last_30_days=3,
+                )
+            },
+            total_followers=12000,
+            avg_post_frequency=2,
+        )
+
+        unverified_feature = self.extractor._social_footprint(social=unverified)
+        verified_feature = self.extractor._social_footprint(social=verified)
+
+        self.assertGreater(verified_feature.value, unverified_feature.value)
+        self.assertTrue(verified_feature.raw_value["platforms"][0]["verified"])
+
+    def test_search_visibility_without_results_returns_low_neutral(self):
+        feature = self.extractor._search_visibility(exa=None)
+
+        self.assertEqual(feature.value, 15.0)
+        self.assertEqual(feature.raw_value["search_results_count"], 0)
+        self.assertEqual(feature.raw_value["evidence"], [])
+
+    def test_search_visibility_with_few_results_stays_mid_low(self):
+        exa = ExaData(
+            brand_name="Acme",
+            mentions=[
+                ExaResult(
+                    url="https://acme.com/about",
+                    title="Acme",
+                    text="Acme builds software for teams.",
+                    score=0.7,
+                ),
+                ExaResult(
+                    url="https://news.example.com/acme",
+                    title="Acme profile",
+                    text="Acme is covered in a profile.",
+                    score=0.5,
+                ),
+            ],
+        )
+
+        feature = self.extractor._search_visibility(exa)
+
+        self.assertGreaterEqual(feature.value, 20.0)
+        self.assertLess(feature.value, 50.0)
+        self.assertEqual(feature.raw_value["relevant_results_count"], 2)
+
+    def test_search_visibility_rewards_many_results_and_own_url_top3(self):
+        exa = self._exa_mentions()
+        exa.mentions.extend(
+            [
+                ExaResult(
+                    url=f"https://coverage{i}.example.com/acme",
+                    title=f"Acme mention {i}",
+                    text="Acme is the main subject of this article.",
+                    score=0.7,
+                )
+                for i in range(6)
+            ]
+        )
+
+        feature = self.extractor._search_visibility(exa)
+
+        self.assertGreaterEqual(feature.value, 70.0)
+        self.assertTrue(feature.raw_value["own_url_in_top3"])
+        self.assertGreaterEqual(feature.raw_value["ai_visibility_signals"], 1)
+        self.assertEqual(len(feature.raw_value["evidence"]), 3)
+
+    def test_search_visibility_filters_low_subject_relevance(self):
+        exa = ExaData(
+            brand_name="Acme",
+            mentions=[
+                ExaResult(
+                    url="https://roundup.example.com",
+                    title="General software roundup",
+                    text="Many brands are discussed here without focusing on one.",
+                    score=0.8,
+                ),
+                ExaResult(
+                    url="https://acme.com",
+                    title="Acme",
+                    text="Acme is the main subject here.",
+                    score=0.8,
+                ),
+            ],
+        )
+
+        feature = self.extractor._search_visibility(exa)
+
+        self.assertEqual(feature.raw_value["search_results_count"], 2)
+        self.assertEqual(feature.raw_value["relevant_results_count"], 1)
+        self.assertEqual(len(feature.raw_value["evidence"]), 1)
+
+    def test_directory_presence_without_directories_is_zero(self):
+        exa = ExaData(
+            brand_name="Acme",
+            mentions=[ExaResult(url="https://acme.com", title="Acme", text="Owned site")],
+        )
+
+        feature = self.extractor._directory_presence(exa)
+
+        self.assertEqual(feature.value, 0.0)
+        self.assertEqual(feature.raw_value["total_points"], 0)
+
+    def test_directory_presence_with_only_tier2_is_limited(self):
+        exa = ExaData(
+            brand_name="Acme",
+            mentions=[
+                ExaResult(
+                    url="https://producthunt.com/posts/acme",
+                    title="Acme on Product Hunt",
+                    text="Listing",
+                ),
+                ExaResult(
+                    url="https://trustpilot.com/review/acme.com",
+                    title="Acme reviews",
+                    text="Review listing",
+                ),
+            ],
+        )
+
+        feature = self.extractor._directory_presence(exa)
+
+        self.assertEqual(feature.value, 16.0)
+        self.assertEqual(len(feature.raw_value["tier2_found"]), 2)
+        self.assertEqual(feature.raw_value["tier1_found"], [])
+
+    def test_directory_presence_with_tier1_and_tier2_mix_scores_higher(self):
+        exa = ExaData(
+            brand_name="Acme",
+            mentions=[
+                ExaResult(url="https://crunchbase.com/organization/acme", title="Crunchbase", text="Listing"),
+                ExaResult(url="https://linkedin.com/company/acme", title="LinkedIn", text="Listing"),
+                ExaResult(url="https://producthunt.com/posts/acme", title="Product Hunt", text="Listing"),
+            ],
+        )
+
+        feature = self.extractor._directory_presence(exa)
+
+        self.assertEqual(feature.value, 48.0)
+        self.assertEqual(len(feature.raw_value["tier1_found"]), 2)
+        self.assertEqual(len(feature.raw_value["tier2_found"]), 1)
 
 
 class VitalidadExtractorTests(unittest.TestCase):

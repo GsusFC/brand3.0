@@ -20,8 +20,7 @@ class ScoringEngineTests(unittest.TestCase):
                 "web_presence": FeatureValue("web_presence", 90.0),
                 "social_footprint": FeatureValue("social_footprint", 75.0),
                 "search_visibility": FeatureValue("search_visibility", 80.0),
-                "ai_visibility": FeatureValue("ai_visibility", 60.0),
-                "directory_listings": FeatureValue("directory_listings", 30.0),
+                "directory_presence": FeatureValue("directory_presence", 30.0),
             },
             "percepcion": {
                 "sentiment_score": FeatureValue("sentiment_score", 70.0),
@@ -48,11 +47,11 @@ class ScoringEngineTests(unittest.TestCase):
         brand = self.engine.score_brand("https://example.com", "Example", features_by_dim)
 
         self.assertAlmostEqual(brand.dimensions["coherencia"].score, 66.5)
-        self.assertAlmostEqual(brand.dimensions["presencia"].score, 73.0)
+        self.assertAlmostEqual(brand.dimensions["presencia"].score, 76.3)
         self.assertAlmostEqual(brand.dimensions["diferenciacion"].score, 66.1)
         # vitalidad = 0.40*90 + 0.35*80 + 0.25*60 = 79.0
         self.assertAlmostEqual(brand.dimensions["vitalidad"].score, 79.0)
-        self.assertEqual(brand.composite_score, 67.0)
+        self.assertEqual(brand.composite_score, 67.6)
 
     def test_presence_ghost_brand_rule_caps_score(self):
         score = self.engine.score_dimension(
@@ -61,8 +60,7 @@ class ScoringEngineTests(unittest.TestCase):
                 "web_presence": FeatureValue("web_presence", 0.0),
                 "social_footprint": FeatureValue("social_footprint", 0.0),
                 "search_visibility": FeatureValue("search_visibility", 90.0),
-                "ai_visibility": FeatureValue("ai_visibility", 90.0),
-                "directory_listings": FeatureValue("directory_listings", 90.0),
+                "directory_presence": FeatureValue("directory_presence", 90.0),
             },
         )
 

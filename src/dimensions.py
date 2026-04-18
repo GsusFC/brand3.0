@@ -41,31 +41,26 @@ DIMENSIONS = {
     },
 
     "presencia": {
-        "description": "¿Dónde aparece y con qué volumen? (web, social, AI visibility)",
+        "description": "¿Dónde aparece la marca y cuánta descubrilidad real tiene?",
         "weight": 0.20,
         "features": {
             "web_presence": {
-                "description": "¿Tiene web propia? ¿Es profesional? ¿Carga bien?",
-                "weight": 0.25,
+                "description": "¿Tiene web propia real, segura y con identidad reconocible?",
+                "weight": 0.30,
                 "sources": ["web_scrape"],
             },
             "social_footprint": {
-                "description": "En qué plataformas está, seguidores, alcance",
-                "weight": 0.30,
+                "description": "Presencia y actividad social en plataformas relevantes",
+                "weight": 0.35,
                 "sources": ["social_media"],
             },
             "search_visibility": {
-                "description": "¿Aparece en resultados de búsqueda por su nombre/nicho?",
-                "weight": 0.20,
-                "sources": ["exa"],
-            },
-            "ai_visibility": {
-                "description": "¿Los LLMs conocen la marca? ¿Aparece en respuestas de IA?",
-                "weight": 0.15,
+                "description": "Descubribilidad en búsqueda y visibilidad en resultados de IA",
+                "weight": 0.25,
                 "sources": ["exa", "llm_probe"],
             },
-            "directory_listings": {
-                "description": "¿Está en directorios relevantes? (Google Business, Crunchbase, etc.)",
+            "directory_presence": {
+                "description": "Presencia en directorios estructurados y plataformas de listing",
                 "weight": 0.10,
                 "sources": ["exa"],
             },
