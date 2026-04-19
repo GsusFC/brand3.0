@@ -1,0 +1,30 @@
+app = "brand3"
+primary_region = "mad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  BRAND3_ENVIRONMENT = "production"
+  BRAND3_BASE_URL = "https://brand3.fly.dev"
+  BRAND3_MAX_CONCURRENT_ANALYSES = "2"
+  BRAND3_ANALYSIS_TIMEOUT_SECONDS = "600"
+  BRAND3_RATE_LIMIT_PER_IP = "5"
+  BRAND3_RATE_LIMIT_WINDOW_HOURS = "24"
+
+[[mounts]]
+  source = "brand3_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Worker must not be killed mid-analysis → keep the machine alive.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
