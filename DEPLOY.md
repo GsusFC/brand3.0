@@ -1,6 +1,6 @@
 # Deployment — Brand3 web app on Fly.io
 
-Target: <https://brand3.fly.dev>. Region `mad`. Single 1-GB machine with a
+Target: <https://brand3.fly.dev>. Region `cdg` (París). Single 1-GB machine with a
 persistent volume at `/data` and continuous Litestream replication to an
 S3-compatible bucket (Cloudflare R2 recommended).
 
@@ -24,7 +24,7 @@ LITESTREAM_SECRET_ACCESS_KEY=…
 
 ```bash
 fly apps create brand3
-fly volumes create brand3_data --region mad --size 1
+fly volumes create brand3_data --region cdg --size 1
 ```
 
 ### 1.3 Secrets
