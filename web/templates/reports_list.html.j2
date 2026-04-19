@@ -4,7 +4,7 @@
 <section>
   <div class="section-head">
     <span class="label">public_observatory</span>
-    <span class="tag">// {{ rows|length }} visible</span>
+    <span class="tag">// {{ total }} total · page {{ page }}/{{ total_pages }}</span>
   </div>
 
   <form method="get" action="/reports" class="form-row" style="margin-bottom:16px">
@@ -20,14 +20,22 @@
   {% if rows %}
   <table>
     <thead>
-      <tr><th>date</th><th>brand</th><th class="num">score</th><th>band</th><th></th></tr>
+      <tr>
+        <th style="width:14%">date</th>
+        <th style="width:26%">brand</th>
+        <th style="width:8%" class="num">score</th>
+        <th style="width:28%">bar</th>
+        <th style="width:16%">band</th>
+        <th></th>
+      </tr>
     </thead>
     <tbody>
     {% for row in rows %}
       <tr>
-        <td>{{ row.completed_at }}</td>
+        <td>{{ row.date }}</td>
         <td><a href="/brand/{{ row.brand_slug }}">{{ row.brand_slug }}</a></td>
-        <td class="num num-inline">{{ row.composite }}</td>
+        <td class="num num-inline">{{ row.score_display }}</td>
+        <td class="bar">{{ row.bar }}</td>
         <td class="dim">{{ row.band }}</td>
         <td><a href="/r/{{ row.token }}">view</a></td>
       </tr>
@@ -40,7 +48,7 @@
 
   <nav class="pager small">
     {% if has_prev %}<a href="/reports?page={{ page - 1 }}&q={{ query }}&sort={{ sort }}">← prev</a>{% endif %}
-    <span class="dim">page {{ page }}</span>
+    <span class="dim">page {{ page }} of {{ total_pages }}</span>
     {% if has_next %}<a href="/reports?page={{ page + 1 }}&q={{ query }}&sort={{ sort }}">next →</a>{% endif %}
   </nav>
 </section>

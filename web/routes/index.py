@@ -1,7 +1,9 @@
-"""GET / — landing form + latest analyses list."""
+"""GET / — landing form + latest 10 public analyses."""
 
 from fastapi import APIRouter, Request
 
+from ..presenters import enrich
+from ..storage import list_latest_public
 from ..templates_env import templates
 
 router = APIRouter()
@@ -9,9 +11,9 @@ router = APIRouter()
 
 @router.get("/")
 async def index(request: Request):
-    # REVIEW: latest_analyses populated in Phase 4.
+    rows = enrich(list_latest_public(limit=10))
     return templates.TemplateResponse(
         request,
         "index.html.j2",
-        {"latest_analyses": []},
+        {"latest_analyses": rows},
     )

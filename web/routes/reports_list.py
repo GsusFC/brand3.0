@@ -1,28 +1,45 @@
-"""GET /reports — public observatory listing. Populated in Phase 4."""
+"""GET /reports — paginated public observatory list."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
+from ..presenters import enrich
+from ..storage import list_public_reports
 from ..templates_env import templates
 
 router = APIRouter()
+
+_PER_PAGE = 20
+_ALLOWED_SORTS = ("newest", "score_desc", "score_asc")
 
 
 @router.get("/reports")
 async def reports_list(
     request: Request,
-    q: str | None = None,
-    sort: str = "newest",
-    page: int = 1,
+    q: str | None = Query(None),
+    sort: str = Query("newest"),
+    page: int = Query(1, ge=1),
 ):
+    if sort not in _ALLOWED_SORTS:
+        sort = "newest"
+    rows, total = list_public_reports(
+        query=q,
+        sort=sort,
+        page=page,
+        per_page=_PER_PAGE,
+    )
+    rows = enrich(rows)
+    total_pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
     return templates.TemplateResponse(
         request,
         "reports_list.html.j2",
         {
-            "rows": [],
+            "rows": rows,
             "query": q or "",
             "sort": sort,
             "page": page,
-            "has_prev": False,
-            "has_next": False,
+            "total_pages": total_pages,
+            "total": total,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
         },
     )

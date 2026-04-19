@@ -10,19 +10,32 @@
   {% if analyses %}
   <table>
     <thead>
-      <tr><th>date</th><th class="num">score</th><th>band</th><th></th></tr>
+      <tr>
+        <th style="width:14%">date</th>
+        <th style="width:8%" class="num">score</th>
+        <th style="width:38%">bar</th>
+        <th style="width:20%">band</th>
+        <th></th>
+      </tr>
     </thead>
     <tbody>
     {% for row in analyses %}
       <tr>
-        <td>{{ row.completed_at }}</td>
-        <td class="num num-inline">{{ row.composite }}</td>
+        <td>{{ row.date }}</td>
+        <td class="num num-inline">{{ row.score_display }}</td>
+        <td class="bar">{{ row.bar }}</td>
         <td class="dim">{{ row.band }}</td>
         <td><a href="/r/{{ row.token }}">view</a></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  {% if analyses|length > 1 %}
+  <p class="small dim" style="margin-top:14px">// evolution: older runs → newer runs read top-down</p>
+  {% endif %}
+  <p class="small dim" style="margin-top:14px">
+    own this brand? <a href="/takedown?domain={{ domain }}">request takedown →</a>
+  </p>
   {% else %}
   <div class="empty">// no public analyses for this brand.</div>
   <p class="small dim" style="margin-top:10px"><a href="/">← run the first analysis</a></p>
