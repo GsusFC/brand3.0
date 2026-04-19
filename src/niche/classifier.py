@@ -276,6 +276,13 @@ def _normalise_text(*parts: str | None) -> str:
     return re.sub(r"\s+", " ", combined).lower()
 
 
+def _early_signal_text(text: str | None, limit: int = 500) -> str:
+    """Keep classification anchored to title/hero copy instead of long-body noise."""
+    if not text:
+        return ""
+    return text[:limit]
+
+
 def _score_keywords(text: str, keyword_weights: dict[str, float]) -> tuple[float, list[str]]:
     score = 0.0
     evidence: list[str] = []
@@ -312,6 +319,23 @@ def _score_signal_sources(
     return score, evidence
 
 
+def _has_primary_source_evidence(evidence: list[str]) -> bool:
+    return any("[web]" in item or "[identity]" in item for item in evidence)
+
+
+def _has_required_subtype_evidence(subtype_id: str, evidence: list[str]) -> bool:
+    if subtype_id != "workforce_marketplace":
+        return True
+
+    required_terms = {"marketplace", "workforce", "staffing", "shifts", "hourly"}
+    matched_terms = {
+        term
+        for term in required_terms
+        if any(f"'{term}'" in item and ("[web]" in item or "[identity]" in item) for item in evidence)
+    }
+    return len(matched_terms) >= 2
+
+
 def classify_brand_niche(
     brand_name: str | None,
     url: str | None,
@@ -322,7 +346,7 @@ def classify_brand_niche(
     competitor_names: list[str] | None = None,
 ) -> dict[str, Any]:
     identity_text = _normalise_text(brand_name, url)
-    web_text = _normalise_text(web_title, web_content)
+    web_text = _normalise_text(web_title, _early_signal_text(web_content))
     exa_text = _normalise_text(" ".join(exa_texts or []))
     competitor_text = _normalise_text(" ".join(competitor_names or []))
     corpus = _normalise_text(identity_text, web_text, exa_text, competitor_text)
@@ -401,6 +425,24 @@ def classify_brand_niche(
         reverse=True,
     )
     predicted_subtype = subtype_candidates[0][0] if subtype_candidates else None
+    if predicted_subtype:
+        subtype_config = SUBTYPE_SIGNALS[predicted_subtype]
+        subtype_signal_evidence = subtype_evidence[predicted_subtype]
+        if (
+            subtype_config["profile"] == "base"
+            and not _has_primary_source_evidence(subtype_signal_evidence)
+        ):
+            predicted_subtype = None
+        elif (
+            subtype_config["profile"] == "base"
+            and subtype_scores[predicted_subtype] < 2.5
+        ):
+            predicted_subtype = None
+        elif (
+            subtype_config["profile"] == "base"
+            and not _has_required_subtype_evidence(predicted_subtype, subtype_signal_evidence)
+        ):
+            predicted_subtype = None
     if predicted_subtype and not evidence:
         subtype_counts = Counter(subtype_evidence[predicted_subtype])
         evidence = [message for message, _ in subtype_counts.most_common(5)]
