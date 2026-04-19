@@ -46,6 +46,15 @@ class WebData:
 class WebCollector:
     """Collects web data via Firecrawl CLI."""
 
+    COOKIE_BANNER_KEYWORDS = [
+        "aceptar",
+        "rechazar cookies",
+        "cookie preferences",
+        "manage cookies",
+        "accept cookies",
+        "consent",
+    ]
+
     COOKIE_PATTERNS = [
         r"we value your privacy",
         r"cookie",
@@ -84,12 +93,24 @@ class WebCollector:
             return {"error": "FIRECRAWL_API_KEY not set"}
         try:
             doc = Firecrawl(api_key=self.api_key).scrape(
-                url, formats=["markdown"], timeout=60000
+                url,
+                formats=["markdown"],
+                timeout=60000,
+                waitFor=2000,
+                onlyMainContent=True,
             )
         except Exception as exc:
             return {"error": str(exc)}
         content = (doc.markdown or "").strip()
         return {"content": content, "raw": content}
+
+    def _looks_like_cookie_banner(self, title: str, content: str) -> bool:
+        title_lower = (title or "").lower()
+        preview_lower = (content or "")[:200].lower()
+        return any(
+            keyword in title_lower or keyword in preview_lower
+            for keyword in self.COOKIE_BANNER_KEYWORDS
+        )
 
     def _clean_markdown_content(self, content: str) -> str:
         """Remove obvious cookie/consent UI sludge from scraped markdown."""
@@ -335,6 +356,13 @@ class WebCollector:
             data.markdown_content = self._clean_markdown_content(result.get("content", ""))
             data.title = self._extract_title(data.markdown_content)
             data.markdown_content = self._trim_to_title(data.markdown_content, data.title)
+            if self._looks_like_cookie_banner(data.title, data.markdown_content):
+                print(
+                    f"  WARNING: scrape may be cookie banner, not content"
+                    f" (title: {data.title[:80]})"
+                )
+                data.title = ""
+                data.markdown_content = ""
         else:
             data.error = result["error"]
 
