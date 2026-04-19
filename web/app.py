@@ -12,7 +12,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
+from .middleware.rate_limit import rate_limit_middleware
 from .routes import analyze, brand, index, report, reports_list, status, takedown, team
+from .storage import ensure_schema
 from .templates_env import templates
 
 log = logging.getLogger("brand3.web")
@@ -22,6 +24,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_schema()
     # Phase 3 will start the AnalysisQueue worker here.
     log.info(
         "brand3.web starting — env=%s base_url=%s",
@@ -39,6 +42,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.middleware("http")(rate_limit_middleware)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 for module in (index, analyze, status, report, reports_list, brand, team, takedown):

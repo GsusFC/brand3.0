@@ -122,6 +122,22 @@ class SQLiteStore:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self._init_schema()
+        self._apply_file_migrations()
+
+    def _apply_file_migrations(self) -> None:
+        """Run idempotent `.sql` files in migrations/ in filename order.
+
+        Migrations coexist with the inline schema in `_init_schema` — they
+        are meant for tables added after the engine shipped (e.g. the web
+        app's `web_requests`). Every migration must be re-runnable.
+        """
+        project_root = Path(__file__).resolve().parents[2]
+        migrations_dir = project_root / "migrations"
+        if not migrations_dir.is_dir():
+            return
+        for path in sorted(migrations_dir.glob("*.sql")):
+            sql = path.read_text(encoding="utf-8")
+            self.conn.executescript(sql)
 
     def close(self) -> None:
         self.conn.close()
