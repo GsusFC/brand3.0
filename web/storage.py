@@ -51,3 +51,31 @@ def count_recent_analyses_for_ip(ip: str, hours: int = 24) -> int:
         )
         row = cur.fetchone()
     return int(row["c"]) if row else 0
+
+
+def insert_request(
+    *,
+    token: str,
+    url: str,
+    brand_slug: str,
+    requester_ip: str,
+    requester_is_team: bool,
+) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO web_requests
+              (token, url, brand_slug, requester_ip, requester_is_team, status)
+            VALUES (?, ?, ?, ?, ?, 'queued')
+            """,
+            (token, url, brand_slug, requester_ip, 1 if requester_is_team else 0),
+        )
+        conn.commit()
+
+
+def get_request(token: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM web_requests WHERE token = ?", (token,)
+        ).fetchone()
+    return dict(row) if row else None

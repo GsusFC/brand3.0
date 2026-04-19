@@ -16,6 +16,7 @@ from .middleware.rate_limit import rate_limit_middleware
 from .routes import analyze, brand, index, report, reports_list, status, takedown, team
 from .storage import ensure_schema
 from .templates_env import templates
+from .workers.queue import get_queue
 
 log = logging.getLogger("brand3.web")
 
@@ -25,14 +26,19 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_schema()
-    # Phase 3 will start the AnalysisQueue worker here.
+    queue = get_queue()
+    await queue.start()
     log.info(
-        "brand3.web starting — env=%s base_url=%s",
+        "brand3.web starting — env=%s base_url=%s workers=%d",
         settings.environment,
         settings.base_url,
+        queue.max_concurrent,
     )
-    yield
-    log.info("brand3.web shutting down")
+    try:
+        yield
+    finally:
+        await queue.stop()
+        log.info("brand3.web shutting down")
 
 
 app = FastAPI(

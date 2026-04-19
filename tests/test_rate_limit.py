@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 def _install_env(db_path: Path) -> None:
@@ -34,6 +35,17 @@ class RateLimitTests(unittest.TestCase):
         from fastapi.testclient import TestClient
 
         from web.app import app
+        from web.workers.queue import set_run_analysis_override
+
+        # Short-circuit DNS so validate_url passes for example.com.
+        self._resolver_patcher = patch(
+            "web.workers.url_validator.socket.getaddrinfo",
+            side_effect=lambda _h, _p: [(2, 1, 6, "", ("1.1.1.1", 0))],
+        )
+        self._resolver_patcher.start()
+
+        # No-op engine so the background queue finishes instantly without I/O.
+        set_run_analysis_override(lambda _url: {"run_id": None, "composite_score": None})
 
         self.client = TestClient(app)
         # Trigger startup lifespan so schema + migrations run.
@@ -41,6 +53,10 @@ class RateLimitTests(unittest.TestCase):
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
+        self._resolver_patcher.stop()
+        from web.workers.queue import set_run_analysis_override
+
+        set_run_analysis_override(None)
         self._tmp.cleanup()
         for key in (
             "BRAND3_DB_PATH",
@@ -78,9 +94,13 @@ class RateLimitTests(unittest.TestCase):
     def test_below_limit_passes_through_to_stub(self):
         for _ in range(3):
             self._insert_request("testclient", seconds_ago=1)
-        response = self.client.post("/analyze", data={"url": "https://example.com"})
-        # Stub route returns 501 until phase 3 lands.
-        self.assertEqual(response.status_code, 501)
+        response = self.client.post(
+            "/analyze",
+            data={"url": "https://example.com"},
+            follow_redirects=False,
+        )
+        # Valid URL enqueues and 303-redirects to the status page.
+        self.assertEqual(response.status_code, 303)
 
     def test_team_cookie_bypasses_limit(self):
         from web.middleware.team_cookie import create_serializer
@@ -93,16 +113,21 @@ class RateLimitTests(unittest.TestCase):
             "/analyze",
             data={"url": "https://example.com"},
             cookies={"brand3_team": token},
+            follow_redirects=False,
         )
-        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.status_code, 303)
 
     def test_other_ips_do_not_share_counter(self):
         for _ in range(5):
             self._insert_request("10.0.0.8", seconds_ago=1)
         # A request from a different IP — TestClient defaults to 'testclient' as host.
-        response = self.client.post("/analyze", data={"url": "https://example.com"})
+        response = self.client.post(
+            "/analyze",
+            data={"url": "https://example.com"},
+            follow_redirects=False,
+        )
         # testclient ≠ 10.0.0.8, so it has its own counter (zero for first call).
-        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.status_code, 303)
 
     def test_rows_outside_window_do_not_count(self):
         # 30h old rows — outside the 24h window.
@@ -113,10 +138,11 @@ class RateLimitTests(unittest.TestCase):
             "/analyze",
             data={"url": "https://example.com"},
             headers={"x-forwarded-for": "10.0.0.9"},  # no-op in dev, doc intent
+            follow_redirects=False,
         )
         # In dev mode, the IP is TestClient's 'testclient'. The seed rows are for
         # 10.0.0.9 and anyway fall outside the window, so they are irrelevant.
-        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.status_code, 303)
 
     def _install_ip_header(self, ip: str) -> None:
         """No-op helper — kept for readability in the window test."""
