@@ -1,0 +1,49 @@
+{% extends "base.html.j2" %}
+{% block title %}Brand3 — free brand health scorer{% endblock %}
+{% block content %}
+<section>
+  <h1 style="font-size:18px;margin-bottom:14px">brand3 — free brand health scorer</h1>
+  <p class="prose dim" style="margin:0 0 18px">
+    Paste a URL, get a 5-dimension analysis (coherencia · presencia · percepción · diferenciación · vitalidad).
+    Results are public and listed in the observatory.
+  </p>
+
+  <form action="/analyze" method="post" class="form-row">
+    <input type="url" name="url" placeholder="https://your-brand.com" required autofocus spellcheck="false" autocomplete="off">
+    <button type="submit">analyze</button>
+  </form>
+
+  <p class="small dim" style="margin-top:8px">
+    Limit: 5 analyses per IP every 24h. FLOC team: <a href="/team/unlock?token=...">/team/unlock?token=...</a>
+  </p>
+</section>
+
+<hr class="rule-thin">
+
+<section>
+  <div class="section-head">
+    <span class="label">latest_analyses</span>
+    <span class="tag">// last 10 public</span>
+  </div>
+  {% if latest_analyses %}
+  <table>
+    <thead>
+      <tr><th>date</th><th>brand</th><th class="num">score</th><th>band</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for row in latest_analyses %}
+      <tr>
+        <td>{{ row.completed_at }}</td>
+        <td><a href="/brand/{{ row.brand_slug }}">{{ row.brand_slug }}</a></td>
+        <td class="num num-inline">{{ row.composite }}</td>
+        <td class="dim">{{ row.band }}</td>
+        <td><a href="/r/{{ row.token }}">view</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">// no public analyses yet — submit the first one above.</div>
+  {% endif %}
+</section>
+{% endblock %}

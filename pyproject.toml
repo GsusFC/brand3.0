@@ -11,12 +11,18 @@ dependencies = [
   "exa-py>=1.8.8",
   "fastapi>=0.115.0",
   "firecrawl-py>=4.0,<5",
-  "jinja2>=3.1",
-  "uvicorn>=0.30.0",
+  "itsdangerous>=2.2.0",
+  "jinja2>=3.1.4",
+  "pydantic-settings>=2.5.0",
+  "python-multipart>=0.0.9",
+  "uvicorn[standard]>=0.30.0",
 ]
 
+[tool.setuptools.package-data]
+"web" = ["templates/*.j2", "static/*"]
+
 [tool.setuptools.packages.find]
-include = ["src", "src.*"]
+include = ["src", "src.*", "web", "web.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

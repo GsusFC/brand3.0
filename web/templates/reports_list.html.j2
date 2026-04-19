@@ -1,0 +1,47 @@
+{% extends "base.html.j2" %}
+{% block title %}brand3 :: reports{% endblock %}
+{% block content %}
+<section>
+  <div class="section-head">
+    <span class="label">public_observatory</span>
+    <span class="tag">// {{ rows|length }} visible</span>
+  </div>
+
+  <form method="get" action="/reports" class="form-row" style="margin-bottom:16px">
+    <input type="text" name="q" value="{{ query }}" placeholder="filter brand slug ...">
+    <select name="sort">
+      <option value="newest" {% if sort == "newest" %}selected{% endif %}>newest</option>
+      <option value="score_desc" {% if sort == "score_desc" %}selected{% endif %}>score ↓</option>
+      <option value="score_asc" {% if sort == "score_asc" %}selected{% endif %}>score ↑</option>
+    </select>
+    <button type="submit">filter</button>
+  </form>
+
+  {% if rows %}
+  <table>
+    <thead>
+      <tr><th>date</th><th>brand</th><th class="num">score</th><th>band</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.completed_at }}</td>
+        <td><a href="/brand/{{ row.brand_slug }}">{{ row.brand_slug }}</a></td>
+        <td class="num num-inline">{{ row.composite }}</td>
+        <td class="dim">{{ row.band }}</td>
+        <td><a href="/r/{{ row.token }}">view</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">// no analyses match this filter.</div>
+  {% endif %}
+
+  <nav class="pager small">
+    {% if has_prev %}<a href="/reports?page={{ page - 1 }}&q={{ query }}&sort={{ sort }}">← prev</a>{% endif %}
+    <span class="dim">page {{ page }}</span>
+    {% if has_next %}<a href="/reports?page={{ page + 1 }}&q={{ query }}&sort={{ sort }}">next →</a>{% endif %}
+  </nav>
+</section>
+{% endblock %}

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Brand3{% endblock %}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/main.css">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="page">
+  <pre class="term-head"><span class="prompt">❯</span> brand3 <span class="hl-accent">--mode</span> web <span class="dim">· public observatory</span></pre>
+  <hr class="rule">
+  {% block content %}{% endblock %}
+  <hr class="rule">
+  <footer class="footer">
+    <div class="kv">
+      <span class="k">engine</span>    <span class="v">brand3 v0.1.0</span>
+      <span class="k">about</span>     <span class="v"><a href="/">/</a> · <a href="/reports">/reports</a> · <a href="/takedown">/takedown</a></span>
+    </div>
+    <div style="margin-top:8px" class="small">
+      Public observatory. Scores are opinions derived from heuristics + LLM analysis, not facts.
+      Own a brand and want the analysis removed? See <a href="/takedown">/takedown</a>.
+    </div>
+    <div style="margin-top:10px"><span class="prompt">❯</span> _<span class="cursor"></span></div>
+  </footer>
+</div>
+</body>
+</html>

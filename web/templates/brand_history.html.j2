@@ -1,0 +1,31 @@
+{% extends "base.html.j2" %}
+{% block title %}brand3 :: {{ domain }}{% endblock %}
+{% block content %}
+<section>
+  <div class="section-head">
+    <span class="label">brand_history · {{ domain }}</span>
+    <span class="tag">// {{ analyses|length }} runs</span>
+  </div>
+
+  {% if analyses %}
+  <table>
+    <thead>
+      <tr><th>date</th><th class="num">score</th><th>band</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for row in analyses %}
+      <tr>
+        <td>{{ row.completed_at }}</td>
+        <td class="num num-inline">{{ row.composite }}</td>
+        <td class="dim">{{ row.band }}</td>
+        <td><a href="/r/{{ row.token }}">view</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">// no public analyses for this brand.</div>
+  <p class="small dim" style="margin-top:10px"><a href="/">← run the first analysis</a></p>
+  {% endif %}
+</section>
+{% endblock %}
