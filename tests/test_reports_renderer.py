@@ -92,6 +92,32 @@ class DerivationHelperTests(unittest.TestCase):
         self.assertIsNone(parse_raw_value(None))
         self.assertIsNone(parse_raw_value(""))
 
+    def test_context_readiness_from_raw_inputs_is_exposed(self):
+        snapshot = _sample_snapshot()
+        snapshot["raw_inputs"] = [
+            {
+                "source": "context",
+                "payload": {
+                    "sitemap_found": True,
+                    "sitemap_url_count": 42,
+                    "robots_found": True,
+                    "llms_txt_found": False,
+                    "schema_types": ["Organization", "WebSite"],
+                    "key_pages": {"about": True, "blog": True},
+                    "coverage": 0.75,
+                    "confidence": 0.82,
+                    "context_score": 78,
+                },
+                "created_at": "2026-04-19T09:40:39",
+            }
+        ]
+
+        ctx = build_report_context(snapshot, theme="dark")
+
+        self.assertTrue(ctx["context_readiness"]["available"])
+        self.assertEqual(ctx["context_readiness"]["sitemap_url_count"], 42)
+        self.assertEqual(ctx["context_readiness"]["confidence_label"], "alta")
+
     def test_parse_raw_value_handles_json(self):
         result = parse_raw_value('{"verdict": "declining"}')
         self.assertEqual(result, {"verdict": "declining"})
@@ -151,7 +177,7 @@ class ReportRendererTests(unittest.TestCase):
         self.assertIn("</html>", html)
         self.assertIn("A16Z", html)
         self.assertIn("74", html)  # composite score display
-        self.assertIn("Software is eating", html)
+        self.assertIn("a16z.com", html)  # URL chip / source list
         self.assertIn("#0e0f10", html)  # dark bg token
 
     def test_render_light_uses_different_palette(self):
@@ -187,7 +213,117 @@ class ReportRendererTests(unittest.TestCase):
             }
         ]
         html = ReportRenderer().render(snapshot, theme="dark")
-        self.assertIn("no evidence available", html)
+        self.assertIn("insufficient data to generate findings", html)
+
+    def test_renders_actual_and_new_tabs(self):
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        self.assertIn('id="tab-actual"', html)
+        self.assertIn('id="tab-new"', html)
+        self.assertIn('id="panel-actual"', html)
+        self.assertIn('id="panel-new"', html)
+        self.assertIn("§3A  current reading", html)
+        self.assertIn("§3N  synthesis", html)
+
+    def test_header_and_score_strip_live_outside_tabs(self):
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        self.assertEqual(html.count("SCORE_GLOBAL"), 1)
+        self.assertEqual(html.count("§2  scores by dimension"), 1)
+        self.assertEqual(html.count("analysis_date"), 1)
+
+    def test_insufficient_data_quality_message_renders(self):
+        snapshot = _sample_snapshot()
+        snapshot["run"]["data_quality"] = "insufficient"
+        snapshot["run"]["composite_score"] = None
+        snapshot["scores"] = [dict(row, score=None) for row in snapshot["scores"]]
+        html = ReportRenderer().render(snapshot, theme="dark")
+        self.assertIn("Insufficient data.", html)
+        self.assertIn("could not evaluate the full brand surface reliably", html)
+        self.assertIn(">n/a<", html.replace(" ", ""))
+
+    # Structural invariants that blindly protect against regressions on the
+    # 9 report bugs the narrative refactor was meant to fix.
+
+    def test_header_uses_dl_report_meta(self):
+        """Bug 9 — no label+value concatenation; key/value live in <dl>."""
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        self.assertIn('<dl class="report-meta">', html)
+        self.assertIn("<dt>data_quality</dt>", html)
+        # No accidental "analysis_date<date>" or "data_qualityunknown" blobs.
+        self.assertNotIn("analysis_date2026", html)
+        self.assertNotIn("data_qualityunknown", html)
+
+    def test_data_quality_never_unknown(self):
+        """Bug 7 — derive_data_quality replaces the 'unknown' sentinel."""
+        snapshot = _sample_snapshot()
+        snapshot["run"].pop("data_quality", None)
+        html = ReportRenderer().render(snapshot, theme="dark")
+        self.assertNotIn("data_quality: unknown", html)
+        # The value should be one of the three valid strings.
+        self.assertTrue(
+            "data_quality: good" in html
+            or "data_quality: degraded" in html
+            or "data_quality: insufficient" in html,
+        )
+
+    def test_no_duplicate_verdict_string(self):
+        """Bug 3 — verdict never rendered twice on the same line."""
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        # In the scores table, verdict+adjective appear in separate <td>s.
+        # A literal duplication like 'solid\nsolid' or 'mixed\nmixed' means
+        # a regression.
+        self.assertNotIn("mixed\nmixed", html)
+        self.assertNotIn("solid\nsolid", html)
+
+    def test_tensions_section_omitted_when_none(self):
+        """Bug 8 — §4 disappears when tensions_prose is None (default)."""
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        self.assertNotIn("§4  cross-dimension tensions", html)
+        self.assertNotIn("(reservado — sin reglas", html)
+
+    def test_tensions_section_appears_when_prose_present(self):
+        """Complement of the previous test — §4 renders when it has content."""
+        from src.reports.derivation import build_report_context
+        from src.reports.renderer import ReportRenderer as _R
+        ctx = build_report_context(_sample_snapshot(), theme="dark")
+        ctx["tensions_prose"] = "Cross-dimensional tension detected in the analysis."
+        ctx["narrative"]["tensions_prose"] = "Cross-dimensional tension detected in the analysis."
+        renderer = _R()
+        html = renderer.env.get_template("report.html.j2").render(**ctx)
+        self.assertIn("§5N  cross-dimension tensions", html)
+        self.assertIn("Cross-dimensional tension detected", html)
+
+    def test_sources_section_is_collapsible(self):
+        """§5 uses <details> + <summary> so it's closed by default."""
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        self.assertIn('<details class="sources">', html)
+        self.assertIn("<summary>", html)
+        # details should NOT carry an 'open' attribute.
+        self.assertNotIn('<details class="sources" open', html)
+
+    def test_no_sin_cita_literal_placeholder(self):
+        """Bug 5 — the stale '(sin cita literal)' string must not appear."""
+        html = ReportRenderer().render(_sample_snapshot(), theme="dark")
+        self.assertNotIn("(sin cita literal)", html)
+
+    def test_none_composite_is_rendered_as_na(self):
+        """Finding 2 — composite_score=None must propagate as n/a, not 0."""
+        snapshot = _sample_snapshot()
+        snapshot["run"]["composite_score"] = None
+        snapshot["scores"] = [dict(row, score=None) for row in snapshot["scores"]]
+        html = ReportRenderer().render(snapshot, theme="dark")
+        self.assertIn(">n/a<", html.replace(" ", ""))
+        self.assertIn("global score unavailable", html)
+        # Must NOT fabricate 0/100 or pretend it's an F.
+        self.assertNotIn("0/100", html)
+        self.assertNotIn("band: F", html)
+
+    def test_score_never_has_decimal(self):
+        """Bug 2 — composite score displayed with 0 decimals consistently."""
+        snapshot = _sample_snapshot()  # composite_score = 74.3
+        html = ReportRenderer().render(snapshot, theme="dark")
+        self.assertIn(">74<", html.replace(" ", ""))  # shows 74
+        self.assertNotIn("74.3/100", html)
+        self.assertNotIn("69.7", html)
 
 
 if __name__ == "__main__":

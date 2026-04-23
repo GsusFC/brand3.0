@@ -7,13 +7,40 @@ conmutated inside a single Jinja2 template.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .derivation import build_report_context, slugify
+from .derivation import slugify
+from .dossier import build_brand_dossier
+
+log = logging.getLogger("brand3.reports.renderer")
+
+
+def _chip_label(url: str) -> str:
+    """Compact display label for a URL used inside a chip.
+
+    Rules: hostname without "www.", plus path if the path is not "/". Truncate
+    the whole label to 25 chars with an ellipsis when longer.
+    """
+    if not url or not isinstance(url, str):
+        return ""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    host = (parsed.hostname or "").lower().lstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    path = (parsed.path or "").rstrip("/")
+    label = f"{host}{path}" if path else host
+    if len(label) > 25:
+        label = label[:24] + "…"
+    return label or url
 
 
 _MODULE_DIR = Path(__file__).resolve().parent
@@ -36,11 +63,23 @@ class ReportRenderer:
             trim_blocks=False,
             lstrip_blocks=False,
         )
+        self.env.filters["chip_label"] = _chip_label
 
-    def render(self, snapshot: dict, theme: Theme = "dark") -> str:
-        context = build_report_context(snapshot, theme=theme)
+    def render(
+        self,
+        snapshot: dict,
+        theme: Theme = "dark",
+        analyzer=None,
+    ) -> str:
+        """Render the report HTML.
+
+        If `analyzer` is None, the narrative layer tries to instantiate
+        an LLM client from env (src.config). Without an API key the
+        narrative falls back to deterministic text for every section.
+        """
+        dossier = build_brand_dossier(snapshot, theme=theme, analyzer=analyzer)
         template = self.env.get_template("report.html.j2")
-        return template.render(**context)
+        return template.render(**dossier)
 
     def render_to_file(
         self,
@@ -53,7 +92,6 @@ class ReportRenderer:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(html, encoding="utf-8")
         return path
-
 
 def _resolve_output_path(snapshot: dict, theme: str, output_dir: Path | None) -> Path:
     # REVIEW: D7 — output/reports/<slug>/<run_id>-<ts>/report.<theme>.html

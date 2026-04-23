@@ -2,10 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>brand-audit :: {{ brand.url or brand.name }}{% if theme == 'dark' %} · night{% endif %}</title>
+<title>brand-audit :: https://www.netlify.com · night</title>
 <style>
   :root {
-  {%- if theme == 'dark' %}
     --fg: #d6d3cc;
     --fg-bright: #f2efe7;
     --bg: #0e0f10;
@@ -19,21 +18,6 @@
     --key: #b58a6a;
     --chip-bg: #15171a;
     --chip-border: #333336;
-  {%- else %}
-    --fg: #111111;
-    --fg-bright: #111111;
-    --bg: #fafaf7;
-    --panel: #fafaf7;
-    --muted: #6b6b6b;
-    --rule: #111111;
-    --alert: #a8261c;
-    --ok: #1f5d3a;
-    --warn: #9a7a00;
-    --accent: #111111;
-    --key: #6b6b6b;
-    --chip-bg: #f2f0ea;
-    --chip-border: #c9c6bf;
-  {%- endif %}
   }
   * { box-sizing: border-box; }
   html, body {
@@ -47,13 +31,13 @@
   .page { max-width: 920px; margin: 0 auto; padding: 40px 28px 80px; }
   .term-head { white-space: pre-wrap; margin: 0 0 6px; font-family: inherit; font-size: 13px; line-height: 1.55; }
   .prompt {
-    color: {% if theme == 'dark' %}var(--ok){% else %}var(--muted){% endif %};
+    color: var(--ok);
     user-select: none;
-    {% if theme == 'dark' %}font-weight: 700;{% endif %}
+    font-weight: 700;
   }
   .dim { color: var(--muted); }
   .rule { border: 0; border-top: 1px solid var(--rule); margin: 18px 0; }
-  .rule-thin { border: 0; border-top: 1px dashed {% if theme == 'dark' %}var(--rule){% else %}#bdbdbd{% endif %}; margin: 14px 0; }
+  .rule-thin { border: 0; border-top: 1px dashed var(--rule); margin: 14px 0; }
   h1, h2, h3, h4 { font-size: 13px; font-weight: 700; margin: 0; letter-spacing: 0; color: var(--fg-bright); }
   h4 { margin-top: 14px; }
   .section-head {
@@ -64,7 +48,7 @@
   .section-head .label { text-transform: uppercase; font-weight: 700; }
   table { width: 100%; border-collapse: collapse; font-family: inherit; font-size: 13px; }
   th, td { text-align: left; padding: 4px 10px 4px 0; vertical-align: top; font-weight: 400; }
-  th { border-bottom: 1px solid {% if theme == 'dark' %}var(--rule){% else %}var(--fg){% endif %}; font-weight: 700; color: var(--fg-bright); }
+  th { border-bottom: 1px solid var(--rule); font-weight: 700; color: var(--fg-bright); }
   td.num { text-align: right; white-space: nowrap; padding-right: 18px; }
   td.bar { font-family: inherit; white-space: pre; color: var(--fg); }
   td.verdict { color: var(--muted); }
@@ -76,7 +60,7 @@
     row-gap: 2px; column-gap: 12px;
     margin: 0;
   }
-  dl.report-meta dt { color: {% if theme == 'dark' %}var(--key){% else %}var(--muted){% endif %}; margin: 0; }
+  dl.report-meta dt { color: var(--key); margin: 0; }
   dl.report-meta dd { margin: 0; color: var(--fg); }
 
   .score-huge { font-size: 74px; line-height: 1; font-weight: 700; letter-spacing: -2px; margin: 6px 0 0; }
@@ -179,12 +163,12 @@
 
   .footer {
     margin-top: 40px; padding-top: 12px;
-    border-top: 1px solid {% if theme == 'dark' %}var(--rule){% else %}var(--fg){% endif %};
+    border-top: 1px solid var(--rule);
     color: var(--muted); font-size: 12px;
   }
   .cursor {
     display: inline-block; width: 7px; height: 14px;
-    background: {% if theme == 'dark' %}var(--ok){% else %}var(--fg){% endif %};
+    background: var(--ok);
     vertical-align: -2px;
     animation: blink 1.05s steps(1, end) infinite;
     margin-left: 4px;
@@ -206,32 +190,32 @@
 <body>
 <div class="page">
 
-<pre class="term-head"><span class="prompt">{% if theme == 'dark' %}❯{% else %}${% endif %}</span> brand-audit <span class="hl-accent">--target</span> {{ brand.url or brand.name }} <span class="hl-accent">--profile</span> {{ brand.profile }} <span class="hl-accent">--engine</span> {{ footer.engine }}
-{%- for line in term_lines %}
-<span class="hl-{{ line.level }}">[{{ line.level }}]</span>{% if line.level == 'ok' %}   {% else %} {% endif %}<span class="dim">{{ line.text }}</span>
-{%- endfor %}</pre>
+<pre class="term-head"><span class="prompt">❯</span> brand-audit <span class="hl-accent">--target</span> https://www.netlify.com <span class="hl-accent">--profile</span> base <span class="hl-accent">--engine</span> brand3 v0.1.0
+<span class="hl-ok">[ok]</span>   <span class="dim">loaded run_id=1 · profile=base · source=unknown</span>
+<span class="hl-warn">[warn]</span> <span class="dim">data_quality: degraded</span>
+<span class="hl-ok">[ok]</span>   <span class="dim">rendering report ...</span></pre>
 
 <hr class="rule">
 
 <div class="header-grid">
   <dl class="report-meta">
     <dt>brand</dt>
-    <dd>{{ brand.name }}</dd>
+    <dd>Example</dd>
     <dt>url</dt>
-    <dd>{% if brand.url %}<a href="{{ brand.url }}" target="_blank" rel="noopener">{{ brand.url }}</a>{% else %}<span class="empty">(no url)</span>{% endif %}</dd>
+    <dd><a href="https://www.netlify.com" target="_blank" rel="noopener">https://www.netlify.com</a></dd>
     <dt>analysis_date</dt>
-    <dd>{{ brand.analysis_date or 'n/a' }}</dd>
+    <dd>n/a</dd>
     <dt>profile</dt>
-    <dd>{{ brand.profile }}{% if brand.profile_source %} · source={{ brand.profile_source }}{% endif %}</dd>
+    <dd>base</dd>
     <dt>data_quality</dt>
-    <dd>{{ brand.data_quality }}</dd>
+    <dd>degraded</dd>
     <dt>scope</dt>
     <dd>public web surface + organic mentions (no paid)</dd>
   </dl>
   <div style="text-align:right">
     <div class="small">SCORE_GLOBAL</div>
-    <div class="score-huge num-inline">{{ score.global_display }}</div>
-    <div class="score-scale">/ 100 · <span class="dim">band: {{ score.band_letter }} · "{{ score.band_adjective }}"</span></div>
+    <div class="score-huge num-inline">72</div>
+    <div class="score-scale">/ 100 · <span class="dim">band: B · "mostly-solid"</span></div>
   </div>
 </div>
 
@@ -253,84 +237,48 @@
     </tr>
   </thead>
   <tbody>
-  {%- for dim in dimensions %}
     <tr>
-      <td>{{ dim.display_name }}</td>
-      <td class="num num-inline">{% if dim.badge_type == 'warn' %}<span class="hl-alert">{{ dim.score_display }}</span>{% else %}{{ dim.score_display }}{% endif %}</td>
-      <td class="bar">{% if dim.badge_type == 'warn' %}<span class="hl-alert">{{ dim.bar }}</span>{% else %}{{ dim.bar }}{% endif %}</td>
-      <td class="verdict">{{ dim.short_verdict }}</td>
-      <td class="verdict">{{ dim.verdict_adjective }}</td>
+      <td>Coherence</td>
+      <td class="num num-inline">78</td>
+      <td class="bar">[████████████████░░░░]</td>
+      <td class="verdict">mixed</td>
+      <td class="verdict">mostly-solid</td>
     </tr>
-  {%- endfor %}
+    <tr>
+      <td>Presence</td>
+      <td class="num num-inline">82</td>
+      <td class="bar">[████████████████░░░░]</td>
+      <td class="verdict">solid</td>
+      <td class="verdict">cohesive</td>
+    </tr>
+    <tr>
+      <td>Perception</td>
+      <td class="num num-inline">66</td>
+      <td class="bar">[█████████████░░░░░░░]</td>
+      <td class="verdict">mixed</td>
+      <td class="verdict">mostly-solid</td>
+    </tr>
+    <tr>
+      <td>Differentiation</td>
+      <td class="num num-inline">54</td>
+      <td class="bar">[███████████░░░░░░░░░]</td>
+      <td class="verdict">mixed</td>
+      <td class="verdict">uneven</td>
+    </tr>
+    <tr>
+      <td>Vitality</td>
+      <td class="num num-inline">71</td>
+      <td class="bar">[██████████████░░░░░░]</td>
+      <td class="verdict">mixed</td>
+      <td class="verdict">mostly-solid</td>
+    </tr>
   </tbody>
 </table>
 
 <hr class="rule">
-
-{%- if context_readiness.available %}
-<div class="section-head">
-  <span class="label">§2B  legibilidad IA/buscadores</span>
-  <span class="tag">// context readiness</span>
-</div>
-
-  {%- if context_readiness.status == 'insufficient_data' %}
-  <div class="quality-note alert">
-    <strong>Datos insuficientes para una puntuación defendible.</strong>
-    El pre-scan encontró muy poca cobertura contextual; las conclusiones deben tratarse como parciales.
-  </div>
-  {%- elif context_readiness.confidence < 0.6 %}
-  <div class="quality-note warn">
-    <strong>Lectura contextual limitada.</strong>
-    Las señales existen, pero la confianza es baja/media.
-  </div>
-  {%- endif %}
-  <table>
-    <tbody>
-      <tr>
-        <th style="width:28%">sitemap</th>
-        <td>{% if context_readiness.sitemap_found %}encontrado · {{ context_readiness.sitemap_url_count }} URLs{% else %}<span class="hl-alert">no encontrado</span>{% endif %}</td>
-      </tr>
-      <tr>
-        <th>robots</th>
-        <td>{% if context_readiness.robots_found %}encontrado{% else %}<span class="hl-alert">no encontrado</span>{% endif %}</td>
-      </tr>
-      <tr>
-        <th>llms.txt</th>
-        <td>{% if context_readiness.llms_txt_found %}encontrado{% else %}<span class="dim">no encontrado</span>{% endif %}</td>
-      </tr>
-      <tr>
-        <th>schema</th>
-        <td>{% if context_readiness.schema_types %}{{ context_readiness.schema_types[:8] | join(', ') }}{% else %}<span class="dim">sin schema detectado</span>{% endif %}</td>
-      </tr>
-      <tr>
-        <th>páginas clave</th>
-        <td>
-          {%- set found_pages = [] -%}
-          {%- for name, found in context_readiness.key_pages.items() -%}
-            {%- if found -%}{%- set _ = found_pages.append(name) -%}{%- endif -%}
-          {%- endfor -%}
-          {% if found_pages %}{{ found_pages | join(', ') }}{% else %}<span class="dim">ninguna detectada</span>{% endif %}
-        </td>
-      </tr>
-      <tr>
-        <th>cobertura / confianza</th>
-        <td>{{ context_readiness.coverage_label }} / {{ context_readiness.confidence_label }}</td>
-      </tr>
-    </tbody>
-  </table>
-
-<hr class="rule">
-{%- endif %}
-
-{%- if evaluation.data_quality == 'degraded' %}
 <div class="quality-note warn">
   <strong>Evaluation degraded.</strong> Some primary inputs were incomplete, so parts of this analysis rely on fallback evidence or partial coverage.
 </div>
-{%- elif evaluation.data_quality == 'insufficient' %}
-<div class="quality-note alert">
-  <strong>Insufficient data.</strong> This run could not evaluate the full brand surface reliably. Read any conclusions as partial.
-</div>
-{%- endif %}
 
 <div class="tabs" data-tabs>
   <div class="tab-list" role="tablist" aria-label="Analysis views">
@@ -343,7 +291,7 @@
       <span class="label">§3A  current reading</span>
       <span class="tag">// analytical view</span>
     </div>
-    <div class="prose">{{ legacy_summary }}</div>
+    <div class="prose">Example scores 72/100 (band B). Strongest dimension: Presence (82/100). Weakest dimension: Differentiation (54/100). Data quality: degraded.</div>
 
     <hr class="rule">
 
@@ -351,23 +299,30 @@
       <span class="label">§4A  observations by dimension</span>
       <span class="tag">// direct signals</span>
     </div>
-    {%- for dim in dimensions %}
     <section class="legacy-section">
-      <h3>{{ loop.index }}. {{ dim.display_name }} <span class="dim">· {{ dim.score_display }}/100 · {{ dim.short_verdict }}</span></h3>
-      {%- if dim.observations %}
-        <ul class="quote-list">
-          {%- for observation in dim.observations %}
-          <li><span class="quote">{{ observation }}</span></li>
-          {%- endfor %}
-        </ul>
-      {%- else %}
+      <h3>1. Coherence <span class="dim">· 78/100 · mixed</span></h3>
         <p class="empty">no derived observations for this dimension.</p>
-      {%- endif %}
     </section>
-    {%- if not loop.last %}
     <hr class="rule-thin">
-    {%- endif %}
-    {%- endfor %}
+    <section class="legacy-section">
+      <h3>2. Presence <span class="dim">· 82/100 · solid</span></h3>
+        <p class="empty">no derived observations for this dimension.</p>
+    </section>
+    <hr class="rule-thin">
+    <section class="legacy-section">
+      <h3>3. Perception <span class="dim">· 66/100 · mixed</span></h3>
+        <p class="empty">no derived observations for this dimension.</p>
+    </section>
+    <hr class="rule-thin">
+    <section class="legacy-section">
+      <h3>4. Differentiation <span class="dim">· 54/100 · mixed</span></h3>
+        <p class="empty">no derived observations for this dimension.</p>
+    </section>
+    <hr class="rule-thin">
+    <section class="legacy-section">
+      <h3>5. Vitality <span class="dim">· 71/100 · mixed</span></h3>
+        <p class="empty">no derived observations for this dimension.</p>
+    </section>
 
     <hr class="rule">
 
@@ -375,46 +330,69 @@
       <span class="label">§5A  evidence by dimension</span>
       <span class="tag">// raw support</span>
     </div>
-    {%- for dim in dimensions %}
     <section class="legacy-section">
-      <h3>{{ loop.index }}. {{ dim.display_name }}</h3>
-      {%- if dim.evidence %}
+      <h3>1. Coherence</h3>
         <ul class="quote-list">
-          {%- for item in dim.evidence %}
           <li>
-            {%- if item.quote %}
-            <div class="quote">{{ item.quote }}</div>
-            {%- endif %}
-            {%- if item.source_url %}
-            <div class="quote-meta"><a href="{{ item.source_url }}" target="_blank" rel="noopener">{{ item.source_url }}</a></div>
-            {%- endif %}
+            <div class="quote">Build the best web experiences.</div>
+            <div class="quote-meta"><a href="web" target="_blank" rel="noopener">web</a></div>
           </li>
-          {%- endfor %}
+          <li>
+            <div class="quote">Netlify powers the Jamstack.</div>
+            <div class="quote-meta"><a href="external" target="_blank" rel="noopener">external</a></div>
+          </li>
         </ul>
-      {%- else %}
-        <p class="empty">no direct evidence collected for this dimension.</p>
-      {%- endif %}
     </section>
-    {%- if not loop.last %}
     <hr class="rule-thin">
-    {%- endif %}
-    {%- endfor %}
+    <section class="legacy-section">
+      <h3>2. Presence</h3>
+        <ul class="quote-list">
+          <li>
+            <div class="quote-meta"><a href="https://en.wikipedia.org/wiki/Netlify" target="_blank" rel="noopener">https://en.wikipedia.org/wiki/Netlify</a></div>
+          </li>
+        </ul>
+    </section>
+    <hr class="rule-thin">
+    <section class="legacy-section">
+      <h3>3. Perception</h3>
+        <ul class="quote-list">
+          <li>
+            <div class="quote">Netlify redefines modern web development.</div>
+            <div class="quote-meta"><a href="https://techcrunch.com/2025/netlify-series-d" target="_blank" rel="noopener">https://techcrunch.com/2025/netlify-series-d</a></div>
+          </li>
+          <li>
+            <div class="quote">Serverless deployments at scale.</div>
+            <div class="quote-meta"><a href="https://www.netlify.com/blog/enterprise/" target="_blank" rel="noopener">https://www.netlify.com/blog/enterprise/</a></div>
+          </li>
+        </ul>
+    </section>
+    <hr class="rule-thin">
+    <section class="legacy-section">
+      <h3>4. Differentiation</h3>
+        <ul class="quote-list">
+          <li>
+            <div class="quote">Ship faster with serverless.</div>
+          </li>
+        </ul>
+    </section>
+    <hr class="rule-thin">
+    <section class="legacy-section">
+      <h3>5. Vitality</h3>
+        <p class="empty">no direct evidence collected for this dimension.</p>
+    </section>
 
     <hr class="rule">
 
     <div class="section-head">
       <span class="label">§6A  all consulted sources</span>
-      <span class="tag">// {{ all_sources | length }} total</span>
+      <span class="tag">// 4 total</span>
     </div>
-    {%- if all_sources %}
     <ul class="source-list">
-      {%- for url in all_sources %}
-      <li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>
-      {%- endfor %}
+      <li><a href="https://techcrunch.com/2025/netlify-series-d" target="_blank" rel="noopener">https://techcrunch.com/2025/netlify-series-d</a></li>
+      <li><a href="https://www.netlify.com/blog/enterprise/" target="_blank" rel="noopener">https://www.netlify.com/blog/enterprise/</a></li>
+      <li><a href="https://en.wikipedia.org/wiki/Netlify" target="_blank" rel="noopener">https://en.wikipedia.org/wiki/Netlify</a></li>
+      <li><a href="https://www.netlify.com/blog/2026-04-01-release/" target="_blank" rel="noopener">https://www.netlify.com/blog/2026-04-01-release/</a></li>
     </ul>
-    {%- else %}
-    <p class="empty">no citable URLs were collected in this run.</p>
-    {%- endif %}
   </section>
 
   <section class="tab-panel" id="panel-new" role="tabpanel" aria-labelledby="tab-new">
@@ -422,7 +400,7 @@
       <span class="label">§3N  synthesis</span>
       <span class="tag">// overview</span>
     </div>
-    <div class="prose">{{ synthesis_prose }}</div>
+    <div class="prose">Netlify presents a clear message backed by consistent external coverage. Press and encyclopedic sources reinforce its serverless positioning. Its owned messaging emphasizes the builder experience without marketing-speak. Main tension: strong presence but still-limited differentiation versus alternatives.</div>
 
     <hr class="rule">
 
@@ -430,65 +408,78 @@
       <span class="label">§4N  findings by dimension</span>
       <span class="tag">// consolidated evidence</span>
     </div>
-
-    {%- for dim in dimensions %}
     <section class="dimension">
-      <h3>4.{{ loop.index }}  {{ dim.display_name }} <span class="dim">· {{ dim.score_display }}/100 · {{ dim.short_verdict }} · {{ dim.verdict_adjective }}</span></h3>
-      {%- if dim.findings %}
-        {%- for finding in dim.findings %}
+      <h3>4.1  Coherence <span class="dim">· 78/100 · mixed · mostly-solid</span></h3>
         <div class="finding">
-          <h4>{{ finding.title }}</h4>
-          <p>{{ finding.prose }}</p>
-          {%- if finding.evidence_urls %}
-          <ul class="chips">
-            {%- for url in finding.evidence_urls %}
-            <li><a href="{{ url }}" target="_blank" rel="noopener">{{ url | chip_label }}</a></li>
-            {%- endfor %}
-          </ul>
-          {%- endif %}
+          <h4>Consolidated evidence</h4>
+          <p>The available sources point in the same direction.</p>
         </div>
-        {%- endfor %}
-      {%- else %}
-        <p class="empty">insufficient data to generate findings for this dimension.</p>
-      {%- endif %}
     </section>
-    {%- if not loop.last %}
     <hr class="rule-thin">
-    {%- endif %}
-    {%- endfor %}
-
-    {%- if tensions_prose %}
-    <hr class="rule">
-
-    <div class="section-head">
-      <span class="label">§5N  cross-dimension tensions</span>
-      <span class="tag">// one observation</span>
-    </div>
-    <div class="prose">{{ tensions_prose }}</div>
-    {%- endif %}
+    <section class="dimension">
+      <h3>4.2  Presence <span class="dim">· 82/100 · solid · cohesive</span></h3>
+        <div class="finding">
+          <h4>Consolidated evidence</h4>
+          <p>The available sources point in the same direction.</p>
+          <ul class="chips">
+            <li><a href="https://en.wikipedia.org/wiki/Netlify" target="_blank" rel="noopener">en.wikipedia.org/wiki/Ne…</a></li>
+          </ul>
+        </div>
+    </section>
+    <hr class="rule-thin">
+    <section class="dimension">
+      <h3>4.3  Perception <span class="dim">· 66/100 · mixed · mostly-solid</span></h3>
+        <div class="finding">
+          <h4>Consolidated evidence</h4>
+          <p>The available sources point in the same direction.</p>
+          <ul class="chips">
+            <li><a href="https://techcrunch.com/2025/netlify-series-d" target="_blank" rel="noopener">techcrunch.com/2025/netl…</a></li>
+            <li><a href="https://www.netlify.com/blog/enterprise/" target="_blank" rel="noopener">netlify.com/blog/enterpr…</a></li>
+          </ul>
+        </div>
+    </section>
+    <hr class="rule-thin">
+    <section class="dimension">
+      <h3>4.4  Differentiation <span class="dim">· 54/100 · mixed · uneven</span></h3>
+        <div class="finding">
+          <h4>Consolidated evidence</h4>
+          <p>The available sources point in the same direction.</p>
+        </div>
+    </section>
+    <hr class="rule-thin">
+    <section class="dimension">
+      <h3>4.5  Vitality <span class="dim">· 71/100 · mixed · mostly-solid</span></h3>
+        <div class="finding">
+          <h4>Consolidated evidence</h4>
+          <p>The available sources point in the same direction.</p>
+          <ul class="chips">
+            <li><a href="https://www.netlify.com/blog/2026-04-01-release/" target="_blank" rel="noopener">netlify.com/blog/2026-04…</a></li>
+          </ul>
+        </div>
+    </section>
 
     <hr class="rule">
 
     <div class="section-head">
       <span class="label">§6N  grouped sources</span>
-      <span class="tag">// {{ all_sources | length }} total</span>
+      <span class="tag">// 4 total</span>
     </div>
-
-    {%- if all_sources %}
     <details class="sources">
-      <summary>show all sources ({{ all_sources | length }})</summary>
-      {%- for group_label, urls in sources_grouped.items() %}
-      <h3>{{ group_label }}</h3>
+      <summary>show all sources (4)</summary>
+      <h3>Owned</h3>
       <ul>
-        {%- for url in urls %}
-        <li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>
-        {%- endfor %}
+        <li><a href="https://www.netlify.com/blog/enterprise/" target="_blank" rel="noopener">https://www.netlify.com/blog/enterprise/</a></li>
+        <li><a href="https://www.netlify.com/blog/2026-04-01-release/" target="_blank" rel="noopener">https://www.netlify.com/blog/2026-04-01-release/</a></li>
       </ul>
-      {%- endfor %}
+      <h3>Encyclopedic</h3>
+      <ul>
+        <li><a href="https://en.wikipedia.org/wiki/Netlify" target="_blank" rel="noopener">https://en.wikipedia.org/wiki/Netlify</a></li>
+      </ul>
+      <h3>News</h3>
+      <ul>
+        <li><a href="https://techcrunch.com/2025/netlify-series-d" target="_blank" rel="noopener">https://techcrunch.com/2025/netlify-series-d</a></li>
+      </ul>
     </details>
-    {%- else %}
-    <p class="empty">no citable URLs were collected in this run.</p>
-    {%- endif %}
   </section>
 </div>
 
@@ -497,22 +488,22 @@
 <div class="footer">
   <dl class="report-meta">
     <dt>engine</dt>
-    <dd>{{ footer.engine }}</dd>
+    <dd>brand3 v0.1.0</dd>
     <dt>profile</dt>
-    <dd>{{ footer.profile }}</dd>
+    <dd>base</dd>
     <dt>fingerprint</dt>
-    <dd>{{ footer.fingerprint }}</dd>
+    <dd>n/a</dd>
     <dt>runtime</dt>
-    <dd>{{ footer.runtime }}</dd>
+    <dd>n/a</dd>
     <dt>report_id</dt>
-    <dd>{{ footer.report_id }}</dd>
+    <dd>rpt_000001</dd>
   </dl>
   <div style="margin-top:14px" class="small">
     This analysis was automatically generated by Brand3 using public data.
     The scores are opinions derived from heuristics and LLM analysis, not facts.
     If you own this brand and want the analysis removed, see <a href="/takedown">/takedown</a>.
   </div>
-  <div style="margin-top:10px"><span class="prompt">{% if theme == 'dark' %}❯{% else %}${% endif %}</span> _<span class="cursor"></span></div>
+  <div style="margin-top:10px"><span class="prompt">❯</span> _<span class="cursor"></span></div>
 </div>
 
 </div>
