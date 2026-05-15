@@ -183,8 +183,12 @@ class WebAppFlowTests(unittest.TestCase):
         self.assertEqual(status_resp.status_code, 303)
         self.assertEqual(status_resp.headers["location"], f"/r/{token}")
 
-        # report endpoint renders HTML.
-        report_resp = self.client.get(f"/r/{token}")
+        # report endpoint renders HTML without live LLM narrative work.
+        with patch(
+            "src.features.llm_analyzer.LLMAnalyzer",
+            side_effect=AssertionError("web report detail must not call LLM"),
+        ):
+            report_resp = self.client.get(f"/r/{token}")
         self.assertEqual(report_resp.status_code, 200)
         self.assertIn("Fake Brand", report_resp.text)
 
