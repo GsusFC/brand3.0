@@ -3,6 +3,7 @@
 /* Brand3 web app: pale operational desk, aligned with the supplied reference. */
 
 :root {
+  color-scheme: light;
   --bg: #eeeeee;
   --surface: #f5f5f5;
   --surface-2: #eeeeee;
@@ -24,8 +25,60 @@
   --danger: #b84f3f;
   --info: #5e6970;
 
+  --body-bg: repeating-linear-gradient(135deg, rgba(22, 22, 22, 0.018) 0 1px, transparent 1px 7px), var(--bg);
+  --page-bg: rgba(245, 245, 245, 0.94);
+  --page-shadow: 0 10px 32px rgba(22, 22, 22, 0.035);
+  --term-bg: rgba(238, 238, 238, 0.76);
+  --nav-link-bg: rgba(245, 245, 245, 0.82);
+  --nav-active-bg: rgba(242, 222, 212, 0.48);
+  --nav-active-border: rgba(239, 73, 13, 0.42);
+  --soft-panel-bg: rgba(245, 245, 245, 0.72);
+  --table-bg: rgba(245, 245, 245, 0.42);
+  --table-head-bg: rgba(238, 238, 238, 0.78);
+  --empty-bg: rgba(238, 238, 238, 0.72);
+  --button-text: #f5f5f5;
+  --footer-bg: rgba(238, 238, 238, 0.7);
+
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Menlo", "Consolas", ui-monospace, monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d0e;
+  --surface: #121615;
+  --surface-2: #171b1a;
+  --surface-3: #1d2321;
+  --border: #28302d;
+  --border-strong: #39423e;
+
+  --text: #dedbd2;
+  --text-muted: #9b968c;
+  --text-soft: #706c65;
+
+  --accent: #ff6a2b;
+  --accent-soft: rgba(255, 106, 43, 0.16);
+  --ink-blue: #8aa0aa;
+  --olive: #a3ad8b;
+
+  --success: #9bcf82;
+  --warning: #e4c76d;
+  --danger: #e07a6d;
+  --info: #9db0b9;
+
+  --body-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 280px), repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 96px), var(--bg);
+  --page-bg: rgba(18, 22, 21, 0.94);
+  --page-shadow: none;
+  --term-bg: rgba(18, 22, 21, 0.82);
+  --nav-link-bg: rgba(18, 22, 21, 0.86);
+  --nav-active-bg: rgba(255, 106, 43, 0.12);
+  --nav-active-border: rgba(255, 106, 43, 0.46);
+  --soft-panel-bg: rgba(18, 22, 21, 0.76);
+  --table-bg: rgba(18, 22, 21, 0.54);
+  --table-head-bg: rgba(23, 27, 26, 0.86);
+  --empty-bg: rgba(23, 27, 26, 0.72);
+  --button-text: #0b0d0e;
+  --footer-bg: rgba(18, 22, 21, 0.72);
 }
 
 *,
@@ -39,9 +92,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
-  background:
-    repeating-linear-gradient(135deg, rgba(22, 22, 22, 0.018) 0 1px, transparent 1px 7px),
-    var(--bg);
+  background: var(--body-bg);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 13px;
@@ -65,9 +116,9 @@ body {
   max-width: calc(100% - 48px);
   min-height: calc(100vh - 48px);
   margin: 24px auto;
-  background: rgba(245, 245, 245, 0.94);
+  background: var(--page-bg);
   border: 1px solid var(--border);
-  box-shadow: 0 10px 32px rgba(22, 22, 22, 0.035);
+  box-shadow: var(--page-shadow);
   overflow-x: hidden;
 }
 
@@ -78,7 +129,7 @@ body {
   margin: 0;
   padding: 0 28px;
   border-bottom: 1px solid var(--border);
-  background: rgba(238, 238, 238, 0.76);
+  background: var(--term-bg);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -90,7 +141,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 14px 28px 0;
+  padding: 14px 28px 12px;
   min-width: 0;
 }
 
@@ -99,7 +150,7 @@ body {
   align-items: center;
   min-height: 30px;
   border: 1px solid var(--border);
-  background: rgba(245, 245, 245, 0.82);
+  background: var(--nav-link-bg);
   color: var(--text);
   padding: 4px 10px;
   font-family: var(--font-ui);
@@ -109,9 +160,31 @@ body {
 }
 
 .main-nav-link.is-active {
-  border-color: rgba(239, 73, 13, 0.42);
+  border-color: var(--nav-active-border);
   color: var(--accent);
-  background: rgba(242, 222, 212, 0.48);
+  background: var(--nav-active-bg);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: var(--nav-link-bg);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.theme-toggle:hover,
+.theme-toggle:focus-visible {
+  border-color: var(--nav-active-border);
+  color: var(--accent);
+  outline: none;
 }
 
 .prompt {
@@ -177,7 +250,7 @@ h4 {
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--border);
-  background: rgba(245, 245, 245, 0.72);
+  background: var(--soft-panel-bg);
 }
 
 .home-feature h2 {
@@ -227,7 +300,7 @@ h4 {
   width: 100%;
   overflow-x: auto;
   border: 1px solid var(--border);
-  background: rgba(245, 245, 245, 0.42);
+  background: var(--table-bg);
 }
 
 table {
@@ -248,7 +321,7 @@ td {
 
 th {
   border-bottom: 1px solid var(--border-strong);
-  background: rgba(238, 238, 238, 0.78);
+  background: var(--table-head-bg);
   color: var(--text);
   font-weight: 700;
 }
@@ -335,7 +408,7 @@ th.num {
 .form-row button {
   min-height: 42px;
   background: var(--text);
-  color: #f5f5f5;
+  color: var(--button-text);
   border: 1px solid var(--text);
   border-radius: 0;
   padding: 10px 22px;
@@ -765,7 +838,7 @@ a:focus-visible {
   min-height: 180px;
   place-items: center;
   border: 1px dashed var(--border);
-  background: rgba(238, 238, 238, 0.72);
+  background: var(--empty-bg);
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -1176,7 +1249,7 @@ a:focus-visible {
 .human-review-form-panel {
   min-width: 0;
   border: 1px solid var(--border);
-  background: rgba(245, 245, 245, 0.56);
+  background: var(--table-bg);
   padding: 16px;
 }
 
@@ -1391,7 +1464,7 @@ a:focus-visible {
 
 .comparison-card {
   border: 1px solid var(--border);
-  background: rgba(245, 245, 245, 0.62);
+  background: var(--soft-panel-bg);
   padding: 16px;
 }
 
@@ -1544,7 +1617,7 @@ a:focus-visible {
   width: fit-content;
   border: 1px solid var(--text);
   background: var(--text);
-  color: #f5f5f5;
+  color: var(--button-text);
   padding: 8px 14px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1638,7 +1711,7 @@ a:focus-visible {
 
 .artifact-details {
   border: 1px solid var(--border);
-  background: rgba(245, 245, 245, 0.42);
+  background: var(--table-bg);
   padding: 12px;
   min-width: 0;
 }
@@ -1693,7 +1766,7 @@ a:focus-visible {
   margin-top: 0;
   padding: 18px 28px 24px;
   border-top: 1px solid var(--border);
-  background: rgba(238, 238, 238, 0.7);
+  background: var(--footer-bg);
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -1768,6 +1841,10 @@ a:hover {
   .main-nav {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .theme-toggle {
+    margin-left: 0;
   }
 
   .page-title {

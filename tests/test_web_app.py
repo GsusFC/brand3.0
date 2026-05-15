@@ -106,6 +106,9 @@ class WebAppFlowTests(unittest.TestCase):
         self.assertIn("Visual Signature Lab", response.text)
         self.assertIn("Brand3 Lab", response.text)
         self.assertIn("Brand3 Scoring is the working audit product", response.text)
+        self.assertIn("brand3-theme", response.text)
+        self.assertIn('data-theme-toggle', response.text)
+        self.assertIn("brand3-dark-mode-20260515", response.text)
 
     def test_perceptual_narrative_comparison_lab_renders_static_pairs(self):
         response = self.client.get("/brand3-lab/perceptual-narrative-comparison")

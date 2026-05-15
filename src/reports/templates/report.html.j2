@@ -66,7 +66,7 @@
   .prompt {
     color: {% if theme == 'dark' %}var(--ok){% else %}var(--accent){% endif %};
     user-select: none;
-    {% if theme == 'dark' %}font-weight: 700;{% endif %}
+{% if theme == 'dark' %}    font-weight: 700;{% endif %}
   }
   .dim { color: var(--muted); }
   .rule { border: 0; border-top: 1px solid var(--rule); margin: 18px 0; }

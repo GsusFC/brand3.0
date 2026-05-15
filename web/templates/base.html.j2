@@ -5,9 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Brand3{% endblock %}</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<script>
+  (() => {
+    try {
+      const stored = localStorage.getItem("brand3-theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = stored || (prefersDark ? "dark" : "light");
+    } catch {
+      document.documentElement.dataset.theme = "light";
+    }
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="/static/main.css?v=brand3-visual-signature-fit-viewport-20260513">
+<link rel="stylesheet" href="/static/main.css?v=brand3-dark-mode-20260515">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -18,6 +29,7 @@
     <a class="main-nav-link{% if request.url.path.startswith('/reports') or request.url.path.startswith('/r/') or request.url.path.startswith('/brand/') %} is-active{% endif %}" href="/reports">Reports</a>
     <a class="main-nav-link{% if request.url.path.startswith('/visual-signature') %} is-active{% endif %}" href="/visual-signature">Visual Signature Lab</a>
     <a class="main-nav-link{% if request.url.path.startswith('/brand3-lab') %} is-active{% endif %}" href="/brand3-lab/perceptual-narrative-comparison">Brand3 Lab</a>
+    <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme">Theme</button>
   </nav>
   <hr class="rule">
   {% block content %}{% endblock %}
@@ -35,5 +47,28 @@
     <div class="footer-cursor"><span class="prompt">❯</span> _<span class="cursor"></span></div>
   </footer>
 </div>
+<script>
+  (() => {
+    const button = document.querySelector("[data-theme-toggle]");
+    if (!button) return;
+
+    const setTheme = (theme) => {
+      document.documentElement.dataset.theme = theme;
+      button.textContent = theme === "dark" ? "Light" : "Dark";
+      button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+    };
+
+    setTheme(document.documentElement.dataset.theme || "light");
+    button.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem("brand3-theme", next);
+      } catch {
+        // localStorage can be unavailable in strict/private contexts.
+      }
+      setTheme(next);
+    });
+  })();
+</script>
 </body>
 </html>
