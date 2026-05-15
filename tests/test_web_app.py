@@ -8,6 +8,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -96,6 +97,44 @@ class WebAppFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("localhost", response.text)
 
+    def test_homepage_prioritizes_brand_audit_and_lab_is_secondary(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("brand3 — brand audit", response.text)
+        self.assertIn("run brand audit", response.text)
+        self.assertIn("dimension scores", response.text)
+        self.assertIn("Visual Signature Lab", response.text)
+        self.assertIn("Brand3 Lab", response.text)
+        self.assertIn("Brand3 Scoring is the working audit product", response.text)
+
+    def test_perceptual_narrative_comparison_lab_renders_static_pairs(self):
+        response = self.client.get("/brand3-lab/perceptual-narrative-comparison")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Perceptual Narrative Comparison", response.text)
+        self.assertIn("experimental · comparison only · no persistence", response.text)
+        self.assertIn("baseline narrative", response.text)
+        self.assertIn("perceptual narrative", response.text)
+        self.assertIn("Better specificity", response.text)
+        self.assertIn("Overreach risks", response.text)
+        self.assertIn("Generic phrases", response.text)
+        self.assertIn("Perceptual gains", response.text)
+        for brand in ("Apple", "Linear", "Stripe Docs", "Headspace", "Notion", "Example Company"):
+            self.assertIn(brand, response.text)
+        for option in ("baseline better", "perceptual better", "mixed", "unsafe overreach"):
+            self.assertIn(option, response.text)
+        self.assertIn("Export local draft JSON", response.text)
+        self.assertIn("Draft-only", response.text)
+        self.assertNotIn('method="post"', response.text.lower())
+
+    def test_perceptual_narrative_comparison_export_script_is_draft_only(self):
+        response = self.client.get("/static/perceptual_narrative_comparison.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("draft_only", response.text)
+        self.assertIn("not_persisted", response.text)
+        self.assertIn("No review is persisted", response.text)
+
     def test_analyze_valid_url_redirects_and_persists_row(self):
         response = self.client.post(
             "/analyze",
@@ -145,6 +184,63 @@ class WebAppFlowTests(unittest.TestCase):
         report_resp = self.client.get(f"/r/{token}")
         self.assertEqual(report_resp.status_code, 200)
         self.assertIn("Fake Brand", report_resp.text)
+
+    def test_status_page_shows_live_phase_checklist(self):
+        from web.workers.queue import set_run_analysis_override
+
+        release = threading.Event()
+
+        def _slow_engine(url: str, progress_cb=None) -> dict:
+            if progress_cb is not None:
+                progress_cb("scoring")
+            release.wait(timeout=5)
+            with sqlite3.connect(self.db) as conn:
+                cur = conn.execute(
+                    "INSERT INTO brands (brand_name, url, domain, created_at, "
+                    "last_seen_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+                    ("Phase Brand", url, "example.com"),
+                )
+                brand_id = int(cur.lastrowid)
+                cur = conn.execute(
+                    "INSERT INTO runs (brand_id, brand_name, url, started_at, "
+                    "completed_at, use_llm, use_social, composite_score) "
+                    "VALUES (?, ?, ?, datetime('now'), datetime('now'), 1, 1, ?)",
+                    (brand_id, "Phase Brand", url, 72.5),
+                )
+                run_id = int(cur.lastrowid)
+                conn.commit()
+            return {"run_id": run_id, "composite_score": 72.5}
+
+        set_run_analysis_override(_slow_engine)
+        try:
+            response = self.client.post(
+                "/analyze",
+                data={"url": "https://example.com"},
+                follow_redirects=False,
+            )
+            token = response.headers["location"].split("/")[2]
+
+            row = None
+            for _ in range(30):
+                with sqlite3.connect(self.db) as conn:
+                    row = conn.execute(
+                        "SELECT status, phase FROM web_requests WHERE token = ?",
+                        (token,),
+                    ).fetchone()
+                if row and row[0] == "running" and row[1] == "scoring":
+                    break
+                time.sleep(0.2)
+
+            self.assertEqual(row[0], "running")
+            self.assertEqual(row[1], "scoring")
+
+            status_resp = self.client.get(f"/r/{token}/status")
+            self.assertEqual(status_resp.status_code, 200)
+            self.assertIn("Scoring dimensions", status_resp.text)
+            self.assertIn("[active]", status_resp.text)
+            self.assertIn("This checklist reflects pipeline phase", status_resp.text)
+        finally:
+            release.set()
 
     def test_unknown_token_returns_404(self):
         response = self.client.get("/r/nope-nope/status")

@@ -106,15 +106,16 @@ class WebCollector:
         try:
             doc = Firecrawl(api_key=self.api_key).scrape(
                 url,
-                formats=["markdown"],
+                formats=["markdown", "html"],
                 timeout=60000,
-                waitFor=2000,
-                onlyMainContent=True,
+                wait_for=2000,
+                only_main_content=True,
             )
         except Exception as exc:
             return {"error": str(exc)}
         content = (doc.markdown or "").strip()
-        return {"content": content, "raw": content}
+        html = (getattr(doc, "html", None) or "").strip()
+        return {"content": content, "raw": content, "html": html}
 
     def _looks_like_cookie_banner(self, title: str, content: str) -> bool:
         title_lower = (title or "").lower()
@@ -459,6 +460,7 @@ class WebCollector:
         result = self._run_firecrawl(url)
         if "error" not in result:
             data.markdown_content = self._clean_markdown_content(result.get("content", ""))
+            data.html = result.get("html", "") or data.html
             data.title = self._extract_title(data.markdown_content)
             data.markdown_content = self._trim_to_title(data.markdown_content, data.title)
             if self._looks_like_cookie_banner(data.title, data.markdown_content):

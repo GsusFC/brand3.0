@@ -4,36 +4,53 @@
 <meta charset="UTF-8">
 <title>brand-audit :: https://www.netlify.com</title>
 <style>
+  @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
   :root {
-    --fg: #111111;
-    --fg-bright: #111111;
-    --bg: #fafaf7;
-    --panel: #fafaf7;
-    --muted: #6b6b6b;
-    --rule: #111111;
-    --alert: #a8261c;
-    --ok: #1f5d3a;
-    --warn: #9a7a00;
-    --accent: #111111;
-    --key: #6b6b6b;
-    --chip-bg: #f2f0ea;
-    --chip-border: #c9c6bf;
+    --fg: #161616;
+    --fg-bright: #161616;
+    --bg: #eeeeee;
+    --panel: #f5f5f5;
+    --muted: #77736d;
+    --rule: #e4e4e4;
+    --alert: #b84f3f;
+    --ok: #5f745c;
+    --warn: #b7792b;
+    --accent: #ef490d;
+    --key: #ef490d;
+    --chip-bg: #eeeeee;
+    --chip-border: #e4e4e4;
+    --font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Menlo", "Consolas", ui-monospace, monospace;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
-    background: var(--bg); color: var(--fg);
-    font-family: "IBM Plex Mono", "JetBrains Mono", "Menlo", "Consolas", ui-monospace, monospace;
+    background: repeating-linear-gradient(135deg, rgba(22, 22, 22, 0.018) 0 1px, transparent 1px 7px), var(--bg);
+    color: var(--fg);
+    font-family: var(--font-mono);
     font-size: 13px; line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
     font-feature-settings: "liga" 0, "calt" 0;
   }
-  .page { max-width: 920px; margin: 0 auto; padding: 40px 28px 80px; }
-  .term-head { white-space: pre-wrap; margin: 0 0 6px; font-family: inherit; font-size: 13px; line-height: 1.55; }
+  .page {
+    width: min(1180px, calc(100% - 48px));
+    min-height: calc(100vh - 48px);
+    margin: 24px auto;
+    padding: 34px 28px 76px;
+    background: rgba(245, 245, 245, 0.94);
+    border: 1px solid var(--rule);
+    box-shadow: 0 10px 32px rgba(22, 22, 22, 0.035);
+  }
+  .term-head {
+    white-space: pre-wrap; margin: 0 0 6px;
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.65;
+    font-feature-settings: "liga" 0, "calt" 0;
+  }
   .prompt {
-    color: var(--muted);
+    color: var(--accent);
     user-select: none;
-    
+
   }
   .dim { color: var(--muted); }
   .rule { border: 0; border-top: 1px solid var(--rule); margin: 18px 0; }
@@ -43,14 +60,16 @@
   .section-head {
     display: flex; justify-content: space-between; align-items: baseline;
     gap: 12px; margin: 28px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
   }
-  .section-head .tag { color: var(--muted); font-weight: 400; }
-  .section-head .label { text-transform: uppercase; font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; font-family: inherit; font-size: 13px; }
-  th, td { text-align: left; padding: 4px 10px 4px 0; vertical-align: top; font-weight: 400; }
-  th { border-bottom: 1px solid var(--fg); font-weight: 700; color: var(--fg-bright); }
+  .section-head .tag { color: var(--muted); font-family: var(--font-mono); font-size: 12px; font-weight: 400; }
+  .section-head .label { font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; font-feature-settings: "liga" 0, "calt" 0; }
+  th, td { text-align: left; padding: 6px 10px 6px 0; vertical-align: top; font-weight: 400; }
+  th { border-bottom: 1px solid var(--chip-border); font-weight: 700; color: var(--fg-bright); background: rgba(238, 238, 238, 0.78); }
   td.num { text-align: right; white-space: nowrap; padding-right: 18px; }
-  td.bar { font-family: inherit; white-space: pre; color: var(--fg); }
+  td.bar { font-family: var(--font-mono); white-space: pre; color: var(--accent); }
   td.verdict { color: var(--muted); }
 
   /* Header meta — fixed-width label column so values never concatenate. */
@@ -63,11 +82,17 @@
   dl.report-meta dt { color: var(--muted); margin: 0; }
   dl.report-meta dd { margin: 0; color: var(--fg); }
 
-  .score-huge { font-size: 74px; line-height: 1; font-weight: 700; letter-spacing: -2px; margin: 6px 0 0; }
+  .score-panel { text-align: right; }
+  .score-huge { font-size: 74px; line-height: 1; font-weight: 700; letter-spacing: 0; margin: 6px 0 0; }
   .score-scale { color: var(--muted); font-size: 12px; }
   .header-grid { display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end; }
+  .col-meta { width: 28%; }
+  .col-dimension { width: 20%; }
+  .col-score { width: 8%; }
+  .col-bar { width: 28%; }
+  .col-compact { width: 12%; }
 
-  .prose { max-width: 78ch; }
+  .prose { max-width: none; }
   .num-inline { font-variant-numeric: tabular-nums; }
 
   .quality-note {
@@ -149,7 +174,7 @@
 
   .badge {
     display: inline-block; border: 1px solid var(--fg); padding: 0 6px;
-    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0;
     font-weight: 700; color: var(--fg-bright);
   }
   .badge.warn { border-color: var(--alert); color: var(--alert); }
@@ -166,6 +191,8 @@
     border-top: 1px solid var(--fg);
     color: var(--muted); font-size: 12px;
   }
+  .footer-note { margin-top: 14px; }
+  .footer-cursor { margin-top: 10px; }
   .cursor {
     display: inline-block; width: 7px; height: 14px;
     background: var(--fg);
@@ -174,11 +201,14 @@
     margin-left: 4px;
   }
   @keyframes blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
-  a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  a { color: inherit; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 3px; }
+  a:hover { color: var(--fg-bright); text-decoration-color: var(--accent); }
 
   @media (max-width: 640px) {
+    .page { width: min(100% - 28px, 1180px); padding: 24px 0 60px; }
     .header-grid { grid-template-columns: 1fr; }
     dl.report-meta { grid-template-columns: 120px 1fr; }
+    .score-panel { text-align: left; }
     .score-huge { font-size: 56px; }
   }
   @media print {
@@ -212,7 +242,7 @@
     <dt>scope</dt>
     <dd>public web surface + organic mentions (no paid)</dd>
   </dl>
-  <div style="text-align:right">
+  <div class="score-panel">
     <div class="small">SCORE_GLOBAL</div>
     <div class="score-huge num-inline">72</div>
     <div class="score-scale">/ 100 · <span class="dim">band: B · "mostly-solid"</span></div>
@@ -228,7 +258,7 @@
 <table>
   <tbody>
     <tr>
-      <th style="width:28%">estado agregado</th>
+      <th class="col-meta">estado agregado</th>
       <td><span class="hl-alert">datos insuficientes</span></td>
     </tr>
     <tr>
@@ -260,11 +290,11 @@
 <table>
   <thead>
     <tr>
-      <th style="width: 20%">dimension</th>
-      <th style="width: 8%" class="num">score</th>
-      <th style="width: 28%">bar</th>
-      <th style="width: 12%">confianza</th>
-      <th style="width: 12%">cobertura</th>
+      <th class="col-dimension">dimension</th>
+      <th class="num col-score">score</th>
+      <th class="col-bar">bar</th>
+      <th class="col-compact">confianza</th>
+      <th class="col-compact">cobertura</th>
       <th>verdict</th>
     </tr>
   </thead>
@@ -332,7 +362,7 @@
 <table>
   <tbody>
     <tr>
-      <th style="width:28%">evidencia total</th>
+      <th class="col-meta">evidencia total</th>
       <td>8</td>
     </tr>
     <tr>
@@ -363,9 +393,48 @@
   <section class="tab-panel" id="panel-actual" role="tabpanel" aria-labelledby="tab-actual" hidden>
     <div class="section-head">
       <span class="label">§3A  current reading</span>
-      <span class="tag">// analytical view</span>
+      <span class="tag">// metadata-first</span>
     </div>
-    <div class="prose">Example scores 72/100 (band B). Strongest dimension: Presence (82/100). Weakest dimension: Differentiation (54/100). Data quality: degraded.</div>
+    <div class="quality-note">
+      <strong>Technical summary.</strong> The main narrative interpretation lives in the synthesis tab.
+      Current Reading keeps the score, band, trust, and coverage state visible without competing with that narrative.
+    </div><table>
+      <tbody>
+        <tr>
+          <th class="col-meta">score</th>
+          <td>72/100</td>
+        </tr>
+        <tr>
+          <th>band</th>
+          <td>B · solido · mostly-solid</td>
+        </tr>
+        <tr>
+          <th>strongest dimension</th>
+          <td>Presence · 82/100</td>
+        </tr>
+        <tr>
+          <th>weakest dimension</th>
+          <td>Differentiation · 54/100</td>
+        </tr>
+        <tr>
+          <th>data quality</th>
+          <td>degraded</td>
+        </tr>
+        <tr>
+          <th>trust / readiness</th>
+          <td>datos insuficientes · technical diagnostic</td>
+        </tr>
+        <tr>
+          <th>evidence coverage</th>
+          <td>8 items</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <details class="sources" style="margin-top: 12px;">
+      <summary>show legacy summary (collapsed)</summary>
+      <div class="prose">Example scores 72/100 (band B). Strongest dimension: Presence (82/100). Weakest dimension: Differentiation (54/100). Data quality: degraded.</div>
+    </details>
 
     <hr class="rule">
 
@@ -572,12 +641,12 @@
     <dt>report_id</dt>
     <dd>rpt_000001</dd>
   </dl>
-  <div style="margin-top:14px" class="small">
+  <div class="small footer-note">
     This analysis was automatically generated by Brand3 using public data.
     The scores are opinions derived from heuristics and LLM analysis, not facts.
     If you own this brand and want the analysis removed, see <a href="/takedown">/takedown</a>.
   </div>
-  <div style="margin-top:10px"><span class="prompt">$</span> _<span class="cursor"></span></div>
+  <div class="footer-cursor"><span class="prompt">$</span> _<span class="cursor"></span></div>
 </div>
 
 </div>

@@ -30,7 +30,7 @@ def _load_snapshot(run_id: int) -> dict | None:
 async def report(
     request: Request,
     token: str,
-    theme: Literal["dark", "light"] = Query("dark"),
+    theme: Literal["dark", "light"] = Query("light"),
 ):
     row = get_request(token)
     if row is None:

@@ -64,6 +64,7 @@ class RateLimitTests(unittest.TestCase):
             "BRAND3_TEAM_TOKEN",
             "BRAND3_RATE_LIMIT_PER_IP",
             "BRAND3_RATE_LIMIT_WINDOW_HOURS",
+            "BRAND3_RATE_LIMIT_BYPASS_IPS",
         ):
             os.environ.pop(key, None)
 
@@ -115,6 +116,21 @@ class RateLimitTests(unittest.TestCase):
             cookies={"brand3_team": token},
             follow_redirects=False,
         )
+        self.assertEqual(response.status_code, 303)
+
+    def test_configured_ip_bypasses_limit(self):
+        from web.config import settings
+
+        settings.rate_limit_bypass_ips = "127.0.0.1,testclient"
+        for _ in range(10):
+            self._insert_request("testclient", seconds_ago=1)
+
+        response = self.client.post(
+            "/analyze",
+            data={"url": "https://example.com"},
+            follow_redirects=False,
+        )
+
         self.assertEqual(response.status_code, 303)
 
     def test_other_ips_do_not_share_counter(self):

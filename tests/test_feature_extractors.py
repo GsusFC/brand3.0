@@ -1402,13 +1402,15 @@ Tabular foundation models for real-world data.
     def test_scrape_does_not_call_browser_when_firecrawl_is_usable(self):
         collector = WebCollector()
         content = "# Claude\n\nClaude helps people solve problems with AI. " * 8
+        html = "<html><body><main>Claude helps people solve problems with AI.</main></body></html>"
 
-        with patch.object(WebCollector, "_run_firecrawl", return_value={"content": content}):
+        with patch.object(WebCollector, "_run_firecrawl", return_value={"content": content, "html": html}):
             with patch.object(WebCollector, "_fetch_html_fallback") as html_fallback:
                 with patch.object(WebCollector, "_fetch_browser_fallback") as browser_fallback:
                     data = collector.scrape("https://claude.ai/")
 
         self.assertIn("Claude helps people solve problems", data.markdown_content)
+        self.assertEqual(data.html, html)
         html_fallback.assert_not_called()
         browser_fallback.assert_not_called()
 

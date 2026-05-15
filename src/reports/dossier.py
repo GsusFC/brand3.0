@@ -31,7 +31,13 @@ from .narrative import (
 log = logging.getLogger("brand3.reports.dossier")
 
 
-def build_brand_dossier(snapshot: dict, theme: str = "dark", analyzer=None) -> dict:
+def build_brand_dossier(
+    snapshot: dict,
+    theme: str = "dark",
+    analyzer=None,
+    *,
+    enable_perceptual_narrative: bool = False,
+) -> dict:
     """Build the full report dossier from a run snapshot.
 
     The returned dict keeps the legacy flat report keys for template
@@ -40,7 +46,12 @@ def build_brand_dossier(snapshot: dict, theme: str = "dark", analyzer=None) -> d
     surfaces can reuse directly later.
     """
     base = build_report_base(snapshot, theme=theme)
-    _apply_narrative(base, snapshot, analyzer)
+    _apply_narrative(
+        base,
+        snapshot,
+        analyzer,
+        enable_perceptual_narrative=enable_perceptual_narrative,
+    )
     return build_report_context_from_base(base)
 
 
@@ -70,7 +81,13 @@ def _pick_top_evidences(evidences: list[Evidence], limit: int = 4) -> list[Evide
     return picked
 
 
-def _apply_narrative(base: dict, snapshot: dict, analyzer) -> None:
+def _apply_narrative(
+    base: dict,
+    snapshot: dict,
+    analyzer,
+    *,
+    enable_perceptual_narrative: bool = False,
+) -> None:
     """Mutate the structured base dossier with LLM-generated narrative overlays.
 
     On any failure the relevant slot keeps the deterministic placeholder
@@ -79,6 +96,7 @@ def _apply_narrative(base: dict, snapshot: dict, analyzer) -> None:
     run = snapshot.get("run") or {}
     brand = base["brand"]["name"]
     run_id = run.get("id")
+    analysis_date = run.get("completed_at") or run.get("started_at")
     composite = run.get("composite_score")
     if composite is not None and not isinstance(composite, (int, float)):
         composite = None
@@ -96,6 +114,34 @@ def _apply_narrative(base: dict, snapshot: dict, analyzer) -> None:
         base["narrative"]["synthesis_prose"] = base["narrative"]["summary"]
         return
 
+    try:
+        findings_by_dim = generate_all_findings(
+            dim_evs,
+            brand,
+            analyzer=analyzer,
+            run_id=run_id,
+            analysis_date=analysis_date,
+            enable_perceptual_narrative=enable_perceptual_narrative,
+        )
+    except Exception as exc:
+        log.warning("narrative.generate_all_findings failed: %s", exc)
+        findings_by_dim = {}
+    for dim in base["dimensions"]:
+        dim["findings"] = findings_by_dim.get(dim["name"], [])
+
+    try:
+        tensions = generate_tensions(
+            dim_evs,
+            brand,
+            analyzer=analyzer,
+            run_id=run_id,
+            analysis_date=analysis_date,
+        )
+    except Exception as exc:
+        log.warning("narrative.generate_tensions failed: %s", exc)
+        tensions = None
+    base["narrative"]["tensions_prose"] = tensions
+
     synth_ctx = SynthesisContext(
         brand=brand,
         url=base["brand"].get("url") or "",
@@ -103,6 +149,8 @@ def _apply_narrative(base: dict, snapshot: dict, analyzer) -> None:
         dimensions=dim_evs,
         data_quality=data_quality,
         top_evidences=_pick_top_evidences(evidences, limit=4),
+        analysis_date=analysis_date,
+        tension_text=tensions,
     )
     try:
         synthesis = generate_synthesis(synth_ctx, analyzer=analyzer, run_id=run_id)
@@ -112,20 +160,3 @@ def _apply_narrative(base: dict, snapshot: dict, analyzer) -> None:
     if synthesis:
         base["narrative"]["synthesis_prose"] = synthesis
         base["narrative"]["summary"] = synthesis
-
-    try:
-        findings_by_dim = generate_all_findings(
-            dim_evs, brand, analyzer=analyzer, run_id=run_id
-        )
-    except Exception as exc:
-        log.warning("narrative.generate_all_findings failed: %s", exc)
-        findings_by_dim = {}
-    for dim in base["dimensions"]:
-        dim["findings"] = findings_by_dim.get(dim["name"], [])
-
-    try:
-        tensions = generate_tensions(dim_evs, brand, analyzer=analyzer, run_id=run_id)
-    except Exception as exc:
-        log.warning("narrative.generate_tensions failed: %s", exc)
-        tensions = None
-    base["narrative"]["tensions_prose"] = tensions

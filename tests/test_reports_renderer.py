@@ -232,7 +232,7 @@ class ReportRendererTests(unittest.TestCase):
         self.assertIn("faltan", html)
         self.assertIn("74", html)  # composite score display
         self.assertIn("a16z.com", html)  # URL chip / source list
-        self.assertIn("#0e0f10", html)  # dark bg token
+        self.assertIn("#0b0d0e", html)  # dark bg token
 
     def test_render_shows_cost_policy_when_available(self):
         snapshot = _sample_snapshot()
@@ -251,9 +251,9 @@ class ReportRendererTests(unittest.TestCase):
     def test_render_light_uses_different_palette(self):
         html_dark = ReportRenderer().render(_sample_snapshot(), theme="dark")
         html_light = ReportRenderer().render(_sample_snapshot(), theme="light")
-        self.assertIn("#fafaf7", html_light)  # light bg token
+        self.assertIn("#eeeeee", html_light)  # light bg token
         self.assertNotIn("#0e0f10", html_light)
-        self.assertNotIn("#fafaf7", html_dark)
+        self.assertNotIn("#eeeeee", html_dark)
 
     def test_render_to_file_writes_expected_path(self):
         snapshot = _sample_snapshot()
