@@ -58,6 +58,33 @@
     border: 1px solid {% if theme == 'dark' %}transparent{% else %}var(--rule){% endif %};
     box-shadow: {% if theme == 'dark' %}none{% else %}0 10px 32px rgba(22, 22, 22, 0.035){% endif %};
   }
+  .report-app-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .report-app-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 4px 10px;
+    border: 1px solid var(--rule);
+    background: var(--chip-bg);
+    color: var(--fg);
+    font-size: 12px;
+    text-decoration: none;
+  }
+  .report-app-nav a:hover {
+    border-color: var(--accent);
+    color: var(--fg-bright);
+  }
+  .report-app-nav .spacer {
+    flex: 1 1 auto;
+  }
   .term-head {
     white-space: pre-wrap; margin: 0 0 6px;
     font-family: var(--font-mono); font-size: 12px; line-height: 1.65;
@@ -260,12 +287,21 @@
   }
   @media print {
     body { background: #fff; }
+    .report-app-nav { display: none; }
     .cursor { display: none; }
   }
 </style>
 </head>
 <body>
 <div class="page">
+
+<nav class="report-app-nav" aria-label="Brand3 report navigation">
+  <a href="/reports">Reports</a>
+  <a href="/brand/{{ brand.domain or brand.name }}">Brand history</a>
+  <span class="spacer"></span>
+  <a href="?theme=light">Light</a>
+  <a href="?theme=dark">Dark</a>
+</nav>
 
 <pre class="term-head"><span class="prompt">{% if theme == 'dark' %}❯{% else %}${% endif %}</span> brand-audit <span class="hl-accent">--target</span> {{ brand.url or brand.name }} <span class="hl-accent">--profile</span> {{ brand.profile }} <span class="hl-accent">--engine</span> {{ footer.engine }}
 {%- for line in term_lines %}

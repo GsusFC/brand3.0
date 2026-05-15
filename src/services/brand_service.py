@@ -2003,6 +2003,23 @@ def run(
                     summary=summary,
                 ),
             )
+        if run_id and llm is not None:
+            def _persist_report_narrative() -> None:
+                from src.reports.dossier import (
+                    REPORT_NARRATIVE_SOURCE,
+                    build_report_narrative_payload,
+                )
+
+                snapshot = store.get_run_snapshot(run_id)
+                if not snapshot:
+                    return
+                store.save_raw_input(
+                    run_id,
+                    REPORT_NARRATIVE_SOURCE,
+                    build_report_narrative_payload(snapshot, analyzer=llm),
+                )
+
+            _store_safely(store, "report narrative persistence", _persist_report_narrative)
         return result
     finally:
         if store:

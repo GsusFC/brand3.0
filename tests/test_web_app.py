@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import os
 import sqlite3
 import sys
@@ -183,6 +184,37 @@ class WebAppFlowTests(unittest.TestCase):
         self.assertEqual(status_resp.status_code, 303)
         self.assertEqual(status_resp.headers["location"], f"/r/{token}")
 
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                """
+                INSERT INTO raw_inputs (run_id, source, payload_json, created_at)
+                VALUES (?, 'report_narrative', ?, datetime('now'))
+                """,
+                (
+                    row[1],
+                    json.dumps(
+                        {
+                            "version": 1,
+                            "source": "report_narrative",
+                            "synthesis_prose": "Persisted public narrative.",
+                            "tensions_prose": "Persisted public tension.",
+                            "findings_by_dimension": {
+                                "presencia": [
+                                    {
+                                        "title": "Persisted public finding",
+                                        "observation": "Persisted public observation.",
+                                        "implication": "Persisted public implication.",
+                                        "typical_decision": "Persisted public decision space.",
+                                        "evidence_urls": [],
+                                    }
+                                ]
+                            },
+                        }
+                    ),
+                ),
+            )
+            conn.commit()
+
         # report endpoint renders HTML without live LLM narrative work.
         with patch(
             "src.features.llm_analyzer.LLMAnalyzer",
@@ -191,6 +223,11 @@ class WebAppFlowTests(unittest.TestCase):
             report_resp = self.client.get(f"/r/{token}")
         self.assertEqual(report_resp.status_code, 200)
         self.assertIn("Fake Brand", report_resp.text)
+        self.assertIn("Reports", report_resp.text)
+        self.assertIn("Brand history", report_resp.text)
+        self.assertIn("Persisted public narrative.", report_resp.text)
+        self.assertIn("Persisted public finding", report_resp.text)
+        self.assertIn("Persisted public tension.", report_resp.text)
 
     def test_status_page_shows_live_phase_checklist(self):
         from web.workers.queue import set_run_analysis_override

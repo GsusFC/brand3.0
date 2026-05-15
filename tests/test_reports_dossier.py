@@ -1,7 +1,12 @@
 import unittest
+from copy import deepcopy
 from unittest.mock import MagicMock
 
-from src.reports.dossier import build_brand_dossier
+from src.reports.dossier import (
+    REPORT_NARRATIVE_SOURCE,
+    build_brand_dossier,
+    build_report_narrative_payload,
+)
 from tests.test_reports_renderer import _sample_snapshot
 
 
@@ -88,6 +93,73 @@ class BrandDossierTests(unittest.TestCase):
         self.assertFalse(
             any("EXPERIMENTAL PERCEPTUAL NARRATIVE HINTS" in prompt for prompt in prompts)
         )
+
+    def test_build_report_narrative_payload_serializes_rich_narrative(self):
+        analyzer = MagicMock()
+        analyzer._call.return_value = "Persisted synthesis."
+        analyzer._call_json.side_effect = lambda system, user, max_tokens=2000: (
+            {"tension": "Persisted tension."}
+            if '"tension"' in user
+            else {
+                "findings": [
+                    {
+                        "title": "Persisted finding",
+                        "observation": "Observed surface signal.",
+                        "implication": "May indicate a pattern.",
+                        "typical_decision": "Teams typically choose a focus.",
+                        "evidence_urls": [],
+                    }
+                ]
+            }
+        )
+
+        payload = build_report_narrative_payload(_sample_snapshot(), analyzer=analyzer)
+
+        self.assertEqual(payload["source"], REPORT_NARRATIVE_SOURCE)
+        self.assertEqual(payload["synthesis_prose"], "Persisted synthesis.")
+        self.assertEqual(payload["tensions_prose"], "Persisted tension.")
+        self.assertIn("coherencia", payload["findings_by_dimension"])
+        self.assertEqual(
+            payload["findings_by_dimension"]["coherencia"][0]["title"],
+            "Persisted finding",
+        )
+
+    def test_build_brand_dossier_prefers_persisted_narrative_without_llm(self):
+        snapshot = deepcopy(_sample_snapshot())
+        snapshot.setdefault("raw_inputs", []).append(
+            {
+                "source": REPORT_NARRATIVE_SOURCE,
+                "created_at": "2026-05-15T00:00:00",
+                "payload": {
+                    "version": 1,
+                    "source": REPORT_NARRATIVE_SOURCE,
+                    "synthesis_prose": "Stored narrative synthesis.",
+                    "tensions_prose": "Stored narrative tension.",
+                    "findings_by_dimension": {
+                        "presencia": [
+                            {
+                                "title": "Stored finding",
+                                "observation": "Stored observation.",
+                                "implication": "Stored implication.",
+                                "typical_decision": "Stored decision space.",
+                                "evidence_urls": [],
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+        analyzer = MagicMock()
+        analyzer._call.side_effect = AssertionError("persisted narrative should avoid LLM")
+        analyzer._call_json.side_effect = AssertionError("persisted narrative should avoid LLM")
+
+        dossier = build_brand_dossier(snapshot, analyzer=analyzer)
+
+        self.assertEqual(dossier["synthesis_prose"], "Stored narrative synthesis.")
+        self.assertEqual(dossier["tensions_prose"], "Stored narrative tension.")
+        presencia = next(dim for dim in dossier["dimensions"] if dim["name"] == "presencia")
+        self.assertEqual(presencia["findings"][0].title, "Stored finding")
+        self.assertEqual(presencia["findings"][0].prose, "Stored observation. Stored implication. Stored decision space.")
 
 
 if __name__ == "__main__":
