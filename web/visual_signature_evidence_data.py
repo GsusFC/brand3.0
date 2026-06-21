@@ -7,20 +7,20 @@ from typing import Any
 
 from .visual_signature_artifacts_data import _is_under_root
 from .visual_signature_artifacts_data import visual_signature_root
-from .visual_signature_data_support import _as_list
-from .visual_signature_data_support import _load_json
-from .visual_signature_data_support import _nested
+from .visual_signature_json_data import as_list
+from .visual_signature_json_data import load_json
+from .visual_signature_json_data import nested
 
 
 def visual_evidence_model() -> dict[str, Any]:
     root = visual_signature_root()
     screenshots_dir = root / "screenshots"
-    capture_manifest = _load_json(root / "screenshots" / "capture_manifest.json") or {}
-    dismissal_audit = _load_json(root / "screenshots" / "dismissal_audit.json") or {}
-    rows = _as_list(capture_manifest.get("results"))
+    capture_manifest = load_json(root / "screenshots" / "capture_manifest.json") or {}
+    dismissal_audit = load_json(root / "screenshots" / "dismissal_audit.json") or {}
+    rows = as_list(capture_manifest.get("results"))
     audit_rows = {
         str(row.get("brand_name") or "").lower(): row
-        for row in _as_list(dismissal_audit.get("results"))
+        for row in as_list(dismissal_audit.get("results"))
         if isinstance(row, dict)
     }
 
@@ -37,12 +37,12 @@ def visual_evidence_model() -> dict[str, Any]:
                 "capture_id": _slugify(brand_name),
                 "website_url": row.get("website_url") or row.get("page_url") or "",
                 "capture_status": row.get("status") or "available",
-                "obstruction_type": _nested(row, "before_obstruction", "type") or "unknown",
-                "obstruction_severity": _nested(row, "before_obstruction", "severity") or "unknown",
+                "obstruction_type": nested(row, "before_obstruction", "type") or "unknown",
+                "obstruction_severity": nested(row, "before_obstruction", "severity") or "unknown",
                 "dismissal_attempted": bool(row.get("dismissal_attempted")),
                 "dismissal_successful": bool(row.get("dismissal_successful")),
                 "perceptual_state": row.get("perceptual_state") or audit.get("perceptual_state") or "evidence_record",
-                "evidence_notes": _as_list(row.get("evidence_integrity_notes"))[:4],
+                "evidence_notes": as_list(row.get("evidence_integrity_notes"))[:4],
                 "variants": variants,
             }
         )
@@ -95,7 +95,7 @@ def _related_variant_payload(variant: dict[str, Any], selected_filename: str) ->
 
 def _find_manifest_row(payload: dict[str, Any], brand_name: str) -> dict[str, Any] | None:
     target = brand_name.lower()
-    for row in _as_list(payload.get("results")):
+    for row in as_list(payload.get("results")):
         if isinstance(row, dict) and str(row.get("brand_name") or "").lower() == target:
             return row
     return None

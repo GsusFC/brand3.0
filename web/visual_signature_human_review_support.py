@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from .visual_signature_artifacts_data import visual_signature_root
-from .visual_signature_data_support import _as_list
-from .visual_signature_data_support import _nested
+from .visual_signature_json_data import as_list
+from .visual_signature_json_data import nested
 from .visual_signature_evidence_data import _screenshot_variant_payload
 from .visual_signature_evidence_data import _slugify
 
@@ -78,12 +78,12 @@ def _human_review_question_groups(
     case_design: dict[str, Any],
     semantics: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    regions = _as_list(_nested(design, "canonical_reviewer_screen", "regions"))
+    regions = as_list(nested(design, "canonical_reviewer_screen", "regions"))
     groups = []
     for region in regions:
         if not isinstance(region, dict) or region.get("id") != "structured_visual_questions":
             continue
-        for group in _as_list(region.get("question_groups")):
+        for group in as_list(region.get("question_groups")):
             if isinstance(group, dict):
                 group_name = group.get("name") or "Review questions"
                 groups.append(
@@ -91,11 +91,11 @@ def _human_review_question_groups(
                         "name": group_name,
                         "questions": [
                             _question_semantics(str(question), group_name, semantics)
-                            for question in _as_list(group.get("questions"))
+                            for question in as_list(group.get("questions"))
                         ],
                     }
                 )
-    default_questions = [str(question) for question in _as_list(case_design.get("default_questions"))]
+    default_questions = [str(question) for question in as_list(case_design.get("default_questions"))]
     if default_questions:
         groups.insert(
             0,
@@ -124,9 +124,9 @@ def _human_review_semantic_guidance(semantics: dict[str, Any]) -> dict[str, Any]
         "confidence_meaning": confidence.get("meaning")
         or "Confidence means reviewer certainty from available evidence.",
         "confidence_buckets": confidence.get("buckets") if isinstance(confidence.get("buckets"), dict) else {},
-        "observation_definition": _nested(observation_vs_interpretation, "observation", "definition")
+        "observation_definition": nested(observation_vs_interpretation, "observation", "definition")
         or "Observation is tied directly to visible evidence.",
-        "interpretation_definition": _nested(observation_vs_interpretation, "interpretation", "definition")
+        "interpretation_definition": nested(observation_vs_interpretation, "interpretation", "definition")
         or "Interpretation derives meaning from observations.",
     }
 
@@ -156,7 +156,7 @@ def _question_semantics(question: str, group_name: str, semantics: dict[str, Any
 def _taxonomy_by_id(semantics: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         str(item.get("id")): item
-        for item in _as_list(semantics.get("question_taxonomy"))
+        for item in as_list(semantics.get("question_taxonomy"))
         if isinstance(item, dict) and item.get("id")
     }
 
@@ -263,8 +263,8 @@ def _observation_interpretation_guidance(observation_type: str, semantics: dict[
         if isinstance(semantics.get("observation_vs_interpretation"), dict)
         else {}
     )
-    observation_definition = _nested(observation_vs_interpretation, "observation", "definition") or "Observation is tied directly to visible evidence."
-    interpretation_definition = _nested(observation_vs_interpretation, "interpretation", "definition") or "Interpretation derives meaning from observations."
+    observation_definition = nested(observation_vs_interpretation, "observation", "definition") or "Observation is tied directly to visible evidence."
+    interpretation_definition = nested(observation_vs_interpretation, "interpretation", "definition") or "Interpretation derives meaning from observations."
     if observation_type in {
         "evidence_available",
         "evidence_missing",

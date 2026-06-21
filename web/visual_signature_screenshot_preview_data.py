@@ -8,12 +8,12 @@ from .visual_signature_artifacts_data import screenshot_file_response_payload
 from .visual_signature_artifacts_data import visual_signature_root
 from .visual_signature_display_data import visual_signature_nav
 from .visual_signature_evidence_data import _find_manifest_row
-from .visual_signature_data_support import _load_json
-from .visual_signature_data_support import _pretty_json
 from .visual_signature_evidence_data import _related_variant_payload
 from .visual_signature_evidence_data import _screenshot_variant_payload
 from .visual_signature_evidence_data import _variant_from_filename
 from .visual_signature_evidence_data import visual_evidence_model
+from .visual_signature_json_data import load_json
+from .visual_signature_json_data import pretty_json
 
 
 def build_screenshot_preview_model(filename: str) -> dict[str, Any] | None:
@@ -61,8 +61,8 @@ def build_screenshot_preview_model_for_lang(filename: str, lang: str = "es") -> 
         selected_variant = _screenshot_variant_payload(selected_label, selected_path)
 
     root = visual_signature_root()
-    capture_manifest = _load_json(root / "screenshots" / "capture_manifest.json") or {}
-    dismissal_audit = _load_json(root / "screenshots" / "dismissal_audit.json") or {}
+    capture_manifest = load_json(root / "screenshots" / "capture_manifest.json") or {}
+    dismissal_audit = load_json(root / "screenshots" / "dismissal_audit.json") or {}
     capture_entry = _find_manifest_row(capture_manifest, selected_item["brand_name"])
     dismissal_entry = _find_manifest_row(dismissal_audit, selected_item["brand_name"])
     related = [_related_variant_payload(variant, selected_variant["filename"]) for variant in selected_item["variants"]]
@@ -94,13 +94,13 @@ def build_screenshot_preview_model_for_lang(filename: str, lang: str = "es") -> 
                 "label": "capture_manifest.json",
                 "href": "/visual-signature/artifacts/capture_manifest",
                 "path": str(root / "screenshots" / "capture_manifest.json"),
-                "raw_json": _pretty_json(capture_entry) if capture_entry else "",
+                "raw_json": pretty_json(capture_entry) if capture_entry else "",
             },
             {
                 "label": "dismissal_audit.json",
                 "href": "/visual-signature/artifacts/dismissal_audit",
                 "path": str(root / "screenshots" / "dismissal_audit.json"),
-                "raw_json": _pretty_json(dismissal_entry) if dismissal_entry else "",
+                "raw_json": pretty_json(dismissal_entry) if dismissal_entry else "",
             },
         ],
         "nav": visual_signature_nav(lang, active_section="overview"),

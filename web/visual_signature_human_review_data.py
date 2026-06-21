@@ -14,9 +14,6 @@ from .visual_signature_display_data import visual_signature_nav
 from .visual_signature_evidence_data import visual_evidence_model
 from .visual_signature_data_support import HUMAN_REVIEW_DESIGN_PATH
 from .visual_signature_data_support import REVIEW_SEMANTICS_PATH
-from .visual_signature_data_support import _as_list
-from .visual_signature_data_support import _load_json
-from .visual_signature_data_support import _pretty_json
 from .visual_signature_human_review_support import _fallback_evidence_for_capture
 from .visual_signature_human_review_support import _human_review_active_capture
 from .visual_signature_human_review_support import _human_review_queue_item
@@ -24,22 +21,24 @@ from .visual_signature_human_review_support import _human_review_question_groups
 from .visual_signature_human_review_support import _human_review_semantic_guidance
 from .visual_signature_human_review_support import _human_review_source_artifacts
 from .visual_signature_human_review_support import _slugify
+from .visual_signature_json_data import as_list
+from .visual_signature_json_data import load_json
 
 
 def build_human_review_model(brand: str | None = None, lang: str = "es") -> dict[str, Any] | None:
     if lang not in ("es", "en"):
         lang = "es"
     root = visual_signature_root()
-    review_queue = _load_json(root / "corpus_expansion" / "review_queue.json") or {}
-    pilot = _load_json(root / "corpus_expansion" / "reviewer_workflow_pilot.json") or {}
-    design = _load_json(HUMAN_REVIEW_DESIGN_PATH) or {}
-    semantics = _load_json(REVIEW_SEMANTICS_PATH) or {}
+    review_queue = load_json(root / "corpus_expansion" / "review_queue.json") or {}
+    pilot = load_json(root / "corpus_expansion" / "reviewer_workflow_pilot.json") or {}
+    design = load_json(HUMAN_REVIEW_DESIGN_PATH) or {}
+    semantics = load_json(REVIEW_SEMANTICS_PATH) or {}
     evidence_model = visual_evidence_model()
     evidence_items = {item["capture_id"]: item for item in evidence_model["items"]}
 
-    selected_ids = set(_as_list(pilot.get("selected_review_queue_item_ids")))
+    selected_ids = set(as_list(pilot.get("selected_review_queue_item_ids")))
     queue_items = []
-    for item in _as_list(review_queue.get("queue_items")):
+    for item in as_list(review_queue.get("queue_items")):
         if not isinstance(item, dict):
             continue
         capture_id = str(item.get("capture_id") or "")
@@ -126,8 +125,8 @@ def build_human_review_model(brand: str | None = None, lang: str = "es") -> dict
         "confidence_buckets": ["unknown", "low", "medium", "high"],
         "status_mapping": ["approved", "rejected", "needs_more_evidence"],
         "case_guidance": {
-            "primary_tasks": _as_list(case_design.get("primary_reviewer_task")),
-            "ui_emphasis": _as_list(case_design.get("ui_emphasis")),
+            "primary_tasks": as_list(case_design.get("primary_reviewer_task")),
+            "ui_emphasis": as_list(case_design.get("ui_emphasis")),
         },
         "record_preview_fields": [
             "reviewer_id",
