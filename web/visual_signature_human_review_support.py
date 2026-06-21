@@ -11,6 +11,10 @@ from .visual_signature_json_data import nested
 from .visual_signature_evidence_data import _screenshot_variant_payload
 from .visual_signature_evidence_data import _slugify
 
+HUMAN_REVIEW_DESIGN_PATH = visual_signature_root() / "human_review_ui_design.json"
+REVIEW_SEMANTICS_PATH = visual_signature_root() / "review_semantics.json"
+HUMAN_REVIEW_SCRIPT_PATH = Path(__file__).resolve().parent / "static" / "visual_signature_human_review.js"
+
 
 def _human_review_queue_item(item: dict[str, Any], *, active: bool) -> dict[str, Any]:
     capture_id = _slugify(str(item.get("capture_id") or item.get("brand_name") or ""))

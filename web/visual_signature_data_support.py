@@ -7,14 +7,9 @@ from typing import Any
 
 from .visual_signature_artifacts_data import artifact_path
 from .visual_signature_constants import ARTIFACTS
-from .visual_signature_constants import DEFAULT_VISUAL_SIGNATURE_ROOT
 from .visual_signature_json_data import as_list
 from .visual_signature_json_data import load_json
 from .visual_signature_json_data import pretty_json
-
-HUMAN_REVIEW_DESIGN_PATH = DEFAULT_VISUAL_SIGNATURE_ROOT / "human_review_ui_design.json"
-REVIEW_SEMANTICS_PATH = DEFAULT_VISUAL_SIGNATURE_ROOT / "review_semantics.json"
-HUMAN_REVIEW_SCRIPT_PATH = Path(__file__).resolve().parent / "static" / "visual_signature_human_review.js"
 
 
 def _artifact_payload(key: str) -> dict[str, Any]:
