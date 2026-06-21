@@ -7,6 +7,7 @@ from typing import Any
 from .visual_signature_artifacts_data import artifact_file_response_payload
 from .visual_signature_artifacts_data import screenshot_file_response_payload
 from .visual_signature_artifacts_data import visual_signature_human_review_script_version
+from .visual_signature_evidence_data import visual_evidence_model
 from .visual_signature_data_support import ARTIFACTS
 from .visual_signature_data_support import SECTION_INTROS
 from .visual_signature_data_support import SECTION_TITLES
@@ -15,7 +16,6 @@ from .visual_signature_data_support import _artifacts_for_section
 from .visual_signature_data_support import _cards_for_section
 from .visual_signature_data_support import _items_for_section
 from .visual_signature_data_support import _next_steps
-from .visual_signature_data_support import visual_evidence_model
 from .visual_signature_data_support import _visual_signature_guardrails
 from .visual_signature_data_support import _visual_signature_nav
 from .visual_signature_human_review_data import build_human_review_model

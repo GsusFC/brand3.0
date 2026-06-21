@@ -8,6 +8,10 @@ from typing import Any
 from .visual_signature_artifacts_data import screenshot_file_response_payload
 from .visual_signature_artifacts_data import visual_signature_human_review_script_version
 from .visual_signature_artifacts_data import visual_signature_root
+from .visual_signature_evidence_data import _find_manifest_row
+from .visual_signature_evidence_data import _screenshot_variant_payload
+from .visual_signature_evidence_data import _slugify
+from .visual_signature_evidence_data import visual_evidence_model
 from .visual_signature_data_support import HUMAN_REVIEW_BANNER
 from .visual_signature_data_support import HUMAN_REVIEW_DESIGN_PATH
 from .visual_signature_data_support import HUMAN_REVIEW_GUARDRAILS
@@ -16,14 +20,10 @@ from .visual_signature_data_support import HUMAN_REVIEW_TITLE
 from .visual_signature_data_support import REVIEW_SEMANTICS_PATH
 from .visual_signature_data_support import SECTION_NAV_LABELS
 from .visual_signature_data_support import _as_list
-from .visual_signature_data_support import _find_manifest_row
 from .visual_signature_data_support import _load_json
 from .visual_signature_data_support import _nested
 from .visual_signature_data_support import _pretty_json
-from .visual_signature_data_support import _screenshot_variant_payload
-from .visual_signature_data_support import _slugify
 from .visual_signature_data_support import _visual_signature_nav
-from .visual_signature_data_support import visual_evidence_model
 
 
 def build_human_review_model(brand: str | None = None, lang: str = "es") -> dict[str, Any] | None:
