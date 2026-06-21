@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from .visual_signature_artifacts_data import screenshot_file_response_payload
+from .visual_signature_artifacts_data import visual_signature_root
 from .visual_signature_data_support import _find_manifest_row
 from .visual_signature_data_support import _load_json
 from .visual_signature_data_support import _pretty_json
 from .visual_signature_data_support import _related_variant_payload
 from .visual_signature_data_support import _screenshot_variant_payload
 from .visual_signature_data_support import _variant_from_filename
-from .visual_signature_data_support import screenshot_file_response_payload
 from .visual_signature_data_support import visual_evidence_model
 from .visual_signature_data_support import _visual_signature_nav
-from .visual_signature_data_support import visual_signature_root
 
 
 def build_screenshot_preview_model(filename: str) -> dict[str, Any] | None:
