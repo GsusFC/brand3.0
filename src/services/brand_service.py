@@ -59,7 +59,7 @@ from src.quality.dimension_confidence import dimension_confidence_from_features
 from src.quality.evidence_summary import summarize_evidence_from_features
 from src.scoring.engine import ScoringEngine
 from src.services.calibration_state import _build_experiment_summary
-from src.services.analysis_reporting import brand_report as _brand_report_impl
+from src.services.brand_reporting import brand_report as _brand_report_impl
 from src.services.acquisition_audit import (
     _acquisition_audit_payload,
     _acquisition_provenance_summary,
