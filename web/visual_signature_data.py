@@ -7,6 +7,7 @@ from typing import Any
 from .visual_signature_artifacts_data import artifact_file_response_payload
 from .visual_signature_artifacts_data import screenshot_file_response_payload
 from .visual_signature_artifacts_data import visual_signature_human_review_script_version
+from .visual_signature_artifacts_data import _is_under_root
 from .visual_signature_display_data import SECTION_INTROS
 from .visual_signature_display_data import SECTION_TITLES
 from .visual_signature_display_data import visual_signature_guardrails
