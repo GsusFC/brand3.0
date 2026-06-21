@@ -6,12 +6,13 @@ from typing import Any
 
 from .visual_signature_artifacts_data import visual_signature_human_review_script_version
 from .visual_signature_artifacts_data import visual_signature_root
+from .visual_signature_display_data import HUMAN_REVIEW_BANNER
+from .visual_signature_display_data import HUMAN_REVIEW_GUARDRAILS
+from .visual_signature_display_data import HUMAN_REVIEW_INTRO
+from .visual_signature_display_data import HUMAN_REVIEW_TITLE
+from .visual_signature_display_data import visual_signature_nav
 from .visual_signature_evidence_data import visual_evidence_model
-from .visual_signature_data_support import HUMAN_REVIEW_BANNER
 from .visual_signature_data_support import HUMAN_REVIEW_DESIGN_PATH
-from .visual_signature_data_support import HUMAN_REVIEW_GUARDRAILS
-from .visual_signature_data_support import HUMAN_REVIEW_INTRO
-from .visual_signature_data_support import HUMAN_REVIEW_TITLE
 from .visual_signature_data_support import REVIEW_SEMANTICS_PATH
 from .visual_signature_data_support import _as_list
 from .visual_signature_data_support import _load_json
@@ -23,7 +24,6 @@ from .visual_signature_human_review_support import _human_review_question_groups
 from .visual_signature_human_review_support import _human_review_semantic_guidance
 from .visual_signature_human_review_support import _human_review_source_artifacts
 from .visual_signature_human_review_support import _slugify
-from .visual_signature_data_support import _visual_signature_nav
 
 
 def build_human_review_model(brand: str | None = None, lang: str = "es") -> dict[str, Any] | None:
@@ -107,7 +107,7 @@ def build_human_review_model(brand: str | None = None, lang: str = "es") -> dict
     return {
         "title": HUMAN_REVIEW_TITLE[lang],
         "intro": HUMAN_REVIEW_INTRO[lang],
-        "nav": _visual_signature_nav(lang, active_section="reviewer"),
+        "nav": visual_signature_nav(lang, active_section="reviewer"),
         "guardrails": HUMAN_REVIEW_GUARDRAILS[lang],
         "banner": HUMAN_REVIEW_BANNER[lang],
         "queue": {

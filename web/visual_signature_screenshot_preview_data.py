@@ -6,6 +6,7 @@ from typing import Any
 
 from .visual_signature_artifacts_data import screenshot_file_response_payload
 from .visual_signature_artifacts_data import visual_signature_root
+from .visual_signature_display_data import visual_signature_nav
 from .visual_signature_evidence_data import _find_manifest_row
 from .visual_signature_data_support import _load_json
 from .visual_signature_data_support import _pretty_json
@@ -13,7 +14,6 @@ from .visual_signature_evidence_data import _related_variant_payload
 from .visual_signature_evidence_data import _screenshot_variant_payload
 from .visual_signature_evidence_data import _variant_from_filename
 from .visual_signature_evidence_data import visual_evidence_model
-from .visual_signature_data_support import _visual_signature_nav
 
 
 def build_screenshot_preview_model(filename: str) -> dict[str, Any] | None:
@@ -103,5 +103,5 @@ def build_screenshot_preview_model_for_lang(filename: str, lang: str = "es") -> 
                 "raw_json": _pretty_json(dismissal_entry) if dismissal_entry else "",
             },
         ],
-        "nav": _visual_signature_nav(lang, active_section="overview"),
+        "nav": visual_signature_nav(lang, active_section="overview"),
     }
